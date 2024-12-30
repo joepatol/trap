@@ -34,15 +34,14 @@ impl<S: State, T: ASGICallable<S>> Server<S, T> {
 
 impl<S: State + 'static, T: ASGICallable<S> + 'static> Server<S, T> {
     pub async fn serve(&mut self, config: ServerConfig) -> Result<()> {
-        let lifespan_handler = LifespanHandler::new(self.app_factory.build())
+        let lifespan_handler = 
+            LifespanHandler::new(self.app_factory.build())
             .startup(self.state.clone())
             .await?;
 
-        // Wait for an exit signal or the server loop
-        // send shutdown event when exit signal is received.
         tokio::select! {
             _ = tokio::signal::ctrl_c() => lifespan_handler.shutdown().await,
-            out = self.run_server(config).map_err(|e| Error::unexpected_shutdown("server", e.to_string())) => out,
+            out = self.run_server(config).map_err(|e| Error::unexpected_shutdown("Server", e.to_string())) => out,
         }
     }
 
@@ -63,7 +62,7 @@ impl<S: State + 'static, T: ASGICallable<S> + 'static> Server<S, T> {
 
             let io = TokioIo::new(tcp);
             let iter_state = self.state.clone();
-            let factory_clone = self.app_factory.clone();
+            let iter_factory = self.app_factory.clone();
             let iter_semaphore = semaphore.clone();
             let conn_info = ConnectionInfo::new(client, socket_addr);
             info!("Connecting new client {client}");
@@ -73,7 +72,7 @@ impl<S: State + 'static, T: ASGICallable<S> + 'static> Server<S, T> {
                     .layer_fn(Logger::new)
                     .layer_fn(ConcurrencyLimit::new(iter_semaphore).as_layer())
                     .layer_fn(ContentLengthLimit::new(config.max_size).as_layer())
-                    .service(ASGIService::new(factory_clone, conn_info, iter_state));
+                    .service(ASGIService::new(iter_factory, conn_info, iter_state));
 
                 if let Err(err) = http1::Builder::new()
                     .timer(TokioTimer::new())
@@ -86,7 +85,7 @@ impl<S: State + 'static, T: ASGICallable<S> + 'static> Server<S, T> {
                     if err.is_closed() || err.is_timeout() {
                         info!("Disconnected client {client}");
                     } else {
-                        error!("Error serving connection: {:?}", err);
+                        error!("Error serving connection: {}", err);
                     };
                 }
             });

@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LifespanStartup {
     pub type_: String,
 }
@@ -9,7 +9,7 @@ impl LifespanStartup {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LifespanStartupComplete {
     pub type_: String,
 }
@@ -20,7 +20,7 @@ impl LifespanStartupComplete {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LifespanStartupFailed {
     pub type_: String,
     pub message: String,
@@ -32,7 +32,7 @@ impl LifespanStartupFailed {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LifespanShutdown {
     pub type_: String,
 }
@@ -43,7 +43,7 @@ impl LifespanShutdown {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LifespanShutdownComplete {
     pub type_: String,
 }
@@ -54,7 +54,7 @@ impl LifespanShutdownComplete {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LifespanShutdownFailed {
     pub type_: String,
     pub message: String,

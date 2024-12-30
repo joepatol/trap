@@ -2,7 +2,7 @@ use std::{fmt::Debug, sync::Arc, sync::Mutex};
 
 use log::{debug, error};
 use pyo3::{
-    exceptions::{PyRuntimeError, PyValueError},
+    exceptions::{PyIOError, PyRuntimeError, PyValueError},
     prelude::*,
     types::{PyDict, PyMapping, PyString},
 };
@@ -177,7 +177,12 @@ impl PySend {
         let converted_message: PyASGISendEvent = Python::with_gil(|py: Python| message.extract(py))?;
         (self.send)(converted_message.0)
             .await
-            .map_err(|e| PyRuntimeError::new_err(format!("Error in 'send': {}", e)))?;
+            .map_err(|e| {
+                match e {
+                    Error::DisconnectedClient(e) => PyIOError::new_err(format!("{e}")),
+                    e => PyRuntimeError::new_err(format!("Error in ASGI 'send': {}", e))
+                }
+            })?;
         Ok(())
     }
 }
@@ -196,9 +201,7 @@ impl PyReceive {
 #[pymethods]
 impl PyReceive {
     async fn __call__(&self) -> PyResult<Py<PyDict>> {
-        let received = (self.receive)()
-            .await
-            .map_err(|e| PyRuntimeError::new_err(format!("Error in 'receive': {e}")))?;
+        let received = (self.receive)().await;
         debug!("Receive: {}", &received);
         Python::with_gil(|py| {
             PyASGIReceiveEvent::new(received)

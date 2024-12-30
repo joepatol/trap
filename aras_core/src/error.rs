@@ -33,10 +33,10 @@ pub enum Error {
     },
 
     #[error(transparent)]
-    ChannelReceiveError(#[from] tokio::sync::mpsc::error::SendError<ASGIReceiveEvent>),
+    ChannelReceiveError(#[from] async_channel::SendError<ASGIReceiveEvent>),
 
     #[error(transparent)]
-    ChannelSendError(#[from] tokio::sync::mpsc::error::SendError<ASGISendEvent>),
+    ChannelSendError(#[from] async_channel::SendError<ASGISendEvent>),
 
     #[error("Disconnect")]
     Disconnect,

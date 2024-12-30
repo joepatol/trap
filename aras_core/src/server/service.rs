@@ -26,15 +26,18 @@ impl<S: State + 'static, T: ASGICallable<S> + 'static> Service<Request<Incoming>
     type Future = ServiceFuture;
 
     fn call(&self, req: Request<Incoming>) -> Self::Future {
+        // TODO: use app receiver to check output?
         let asgi_app = self.app_factory.build();
         if is_websocket_request(&req) {
             let mut scope = WebsocketScope::from_hyper_request(&req, self.state.clone());
             scope.set_conn_info(&self.conn_info);
-            Box::pin(finalize(Box::pin(serve_websocket(asgi_app, req, Scope::Websocket(scope)))))
+            let (called_app, _) = asgi_app.call(Scope::Websocket(scope));
+            Box::pin(finalize(Box::pin(serve_websocket(called_app, req))))
         } else {
             let mut scope = HTTPScope::from_hyper_request(&req, self.state.clone());
             scope.set_conn_info(&self.conn_info);
-            Box::pin(finalize(Box::pin(serve_http(asgi_app, req, Scope::HTTP(scope)))))
+            let (called_app, _) = asgi_app.call(Scope::HTTP(scope));
+            Box::pin(finalize(Box::pin(serve_http(called_app, req))))
         }
     }
 }

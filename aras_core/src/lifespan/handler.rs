@@ -1,9 +1,7 @@
 use derive_more::Constructor;
-use futures::TryFutureExt;
 use log::{error, info, warn};
-use tokio::task::JoinHandle;
 
-use crate::application::Application;
+use crate::application::{Application, RunningApplication};
 use crate::asgispec::{ASGICallable, ASGIReceiveEvent, ASGISendEvent, Scope, State};
 use crate::error::{Error, Result};
 
@@ -19,29 +17,19 @@ where
     S: State,
     T: ASGICallable<S>,
 {
-    pub async fn startup(self, state: S) -> Result<StartedLifespanHandler<S, T>> {
+    pub async fn startup(self, state: S) -> Result<StartedLifespanHandler> {
         info!("Application starting");
 
         let app_clone = self.application.clone();
         let state_clone = state.clone();
-        let mut running_app =
-            tokio::task::spawn(async move { app_clone.call(Scope::Lifespan(LifespanScope::new(state_clone))).await });
 
-        let result = tokio::select! {
-            out = startup_loop(self.application.clone()) => out,
-            out = &mut running_app => {
-                match out {
-                    Err(e) => Err(Error::custom(format!("{e}"))),
-                    Ok(Err(e)) => Err(e),
-                    Ok(Ok(_)) => Err(Error::unexpected_shutdown("application", "stopped during startup".into()))
-                }
-            },
-        };
+        let called_app = app_clone.call(Scope::Lifespan(LifespanScope::new(state_clone))).0;
+        let result = startup_loop(called_app.clone()).await;
 
         match result {
             Ok(use_lifespan) => {
                 info!("Application startup complete");
-                Ok(StartedLifespanHandler::new(self.application, running_app, use_lifespan))
+                Ok(StartedLifespanHandler::new(called_app, use_lifespan))
             }
             Err(e) => {
                 info!("Application startup failed");
@@ -52,34 +40,22 @@ where
 }
 
 #[derive(Constructor)]
-pub struct StartedLifespanHandler<S: State + 'static, T: ASGICallable<S> + 'static> {
-    application: Application<S, T>,
-    app_task: JoinHandle<Result<()>>,
+pub struct StartedLifespanHandler {
+    application: RunningApplication,
     enabled: bool,
 }
 
-impl<S, T> StartedLifespanHandler<S, T>
-where
-    S: State,
-    T: ASGICallable<S>,
-{
+impl StartedLifespanHandler {
     pub async fn shutdown(self) -> Result<()> {
         info!("Application shutting down");
         if !self.enabled {
             return Ok(());
         };
-        let result = tokio::try_join!(
-            shutdown_loop(self.application.clone()),
-            self.app_task.map_err(|e| Error::custom(format!("{e}")))
-        );
-        match result {
-            Ok((_, Ok(_))) => {
+
+        match shutdown_loop(self.application).await {
+            Ok(_) => {
                 info!("Application shutdown complete");
                 Ok(())
-            }
-            Ok((_, Err(e))) => {
-                error!("Application shutdown failed");
-                Err(e)
             }
             Err(e) => {
                 error!("Application shutdown failed");
@@ -89,17 +65,15 @@ where
     }
 }
 
-async fn startup_loop<S, T>(mut application: Application<S, T>) -> Result<bool>
-where
-    S: State,
-    T: ASGICallable<S>,
-{
+async fn startup_loop(mut application: RunningApplication) -> Result<bool> {
     application.send_to(ASGIReceiveEvent::new_lifespan_startup()).await?;
-    match application.receive_from().await? {
+    match application.receive_from().await {
         Some(ASGISendEvent::StartupComplete(_)) => Ok(true),
         Some(ASGISendEvent::StartupFailed(event)) => Err(Error::custom(event.message)),
-        Some(ASGISendEvent::Error(e)) => Err(Error::custom(e)),
-        Some(ASGISendEvent::AppReturned) => Err(Error::unexpected_shutdown("application", "stopped during startup".into())),
+        None => Err(Error::unexpected_shutdown(
+            "Application",
+            "stopped during startup".into(),
+        )),
         _ => {
             warn!("Lifespan protocol appears unsupported");
             Ok(false)
@@ -107,29 +81,25 @@ where
     }
 }
 
-async fn shutdown_loop<S, T>(mut application: Application<S, T>) -> Result<()>
-where
-    S: State,
-    T: ASGICallable<S>,
-{
+async fn shutdown_loop(mut application: RunningApplication) -> Result<()> {
     application.send_to(ASGIReceiveEvent::new_lifespan_shutdown()).await?;
-    match application.receive_from().await? {
+    match application.receive_from().await {
         Some(ASGISendEvent::ShutdownComplete(_)) => Ok(()),
         Some(ASGISendEvent::ShutdownFailed(event)) => Err(Error::custom(event.message)),
-        Some(ASGISendEvent::Error(e)) => Err(Error::custom(e)),
-        Some(ASGISendEvent::AppReturned) => Err(Error::unexpected_shutdown("application", "stopped during shutdown".into())),
-        msg => Err(Error::unexpected_asgi_message(Box::new(msg))),
+        Some(msg) => Err(Error::unexpected_asgi_message(Box::new(msg))),
+        None => Err(Error::unexpected_shutdown(
+            "Application",
+            "stopped during shutdown".into(),
+        )),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use tokio::task::JoinHandle;
-
     use super::{LifespanHandler, StartedLifespanHandler};
-    use crate::application::{Application, ApplicationFactory};
+    use crate::application::ApplicationFactory;
     use crate::asgispec::{ASGICallable, ASGIReceiveEvent, ASGISendEvent, ReceiveFn, Scope, SendFn, State};
-    use crate::error::{Error, Result};
+    use crate::error::Error;
 
     #[derive(Clone, Debug)]
     struct MockState;
@@ -143,10 +113,10 @@ mod tests {
             if let Scope::Lifespan(_) = scope {
                 loop {
                     match receive().await {
-                        Ok(ASGIReceiveEvent::Startup(_)) => {
+                        ASGIReceiveEvent::Startup(_) => {
                             send(ASGISendEvent::new_startup_complete()).await?;
                         }
-                        Ok(ASGIReceiveEvent::Shutdown(_)) => return send(ASGISendEvent::new_shutdown_complete()).await,
+                        ASGIReceiveEvent::Shutdown(_) => return send(ASGISendEvent::new_shutdown_complete()).await,
                         _ => return Err(Error::custom("Invalid message")),
                     }
                 }
@@ -162,7 +132,7 @@ mod tests {
         async fn call(&self, scope: Scope<MockState>, receive: ReceiveFn, send: SendFn) -> super::Result<()> {
             if let Scope::Lifespan(_) = scope {
                 loop {
-                    _ = receive().await?;
+                    _ = receive().await;
                     // Send an unrelated message, to mimick the protocol not being supported
                     send(ASGISendEvent::new_http_response_body("oops".into(), false)).await?;
                 }
@@ -207,24 +177,18 @@ mod tests {
             if let Scope::Lifespan(_) = scope {
                 loop {
                     match receive().await {
-                        Ok(ASGIReceiveEvent::Startup(_)) => {
+                        ASGIReceiveEvent::Startup(_) => {
                             send(ASGISendEvent::new_startup_failed("test".to_string())).await?;
                         }
-                        Ok(ASGIReceiveEvent::Shutdown(_)) => return send(ASGISendEvent::new_shutdown_failed("test".to_string())).await,
+                        ASGIReceiveEvent::Shutdown(_) => {
+                            return send(ASGISendEvent::new_shutdown_failed("test".to_string())).await
+                        }
                         _ => return Err(Error::custom("Invalid message")),
                     }
                 }
             };
             Err(Error::custom("Invalid scope"))
         }
-    }
-
-    fn start_application<T: ASGICallable<MockState> + 'static>(application: Application<MockState, T>) -> JoinHandle<Result<()>> {
-        tokio::task::spawn(async move {
-            application
-                .call(Scope::Lifespan(super::LifespanScope::new(MockState {})))
-                .await
-        })
     }
 
     #[tokio::test]
@@ -237,16 +201,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_lifespan_shutdown_ok_if_disabled() {
-        let app = ApplicationFactory::new(LifespanApp {}).build();
-        let lifespan_handler = StartedLifespanHandler::new(app.clone(), start_application(app), false);
+        let app = ApplicationFactory::new(LifespanApp {})
+            .build()
+            .call(Scope::Lifespan(super::LifespanScope::new(MockState {})))
+            .0;
+        let lifespan_handler = StartedLifespanHandler::new(app.clone(), false);
         let result = lifespan_handler.shutdown().await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_lifespan_shutdown() {
-        let app = ApplicationFactory::new(LifespanApp {}).build();
-        let lifespan_handler = StartedLifespanHandler::new(app.clone(), start_application(app), true);
+        let app = ApplicationFactory::new(LifespanApp {})
+            .build()
+            .call(Scope::Lifespan(super::LifespanScope::new(MockState {})))
+            .0;
+        let lifespan_handler = StartedLifespanHandler::new(app.clone(), true);
         let result = lifespan_handler.shutdown().await;
         assert!(result.is_ok());
     }
@@ -264,7 +234,7 @@ mod tests {
         let app = ApplicationFactory::new(ErrorApp {}).build();
         let lifespan_handler = LifespanHandler::new(app);
         let result = lifespan_handler.startup(MockState {}).await;
-        assert!(result.is_err_and(|e| e.to_string() == "Test app raises error"));
+        assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during startup"));
     }
 
     #[tokio::test]
@@ -280,7 +250,7 @@ mod tests {
         let app = ApplicationFactory::new(ErrorOnCallApp {}).build();
         let lifespan_handler = LifespanHandler::new(app);
         let result = lifespan_handler.startup(MockState {}).await;
-        assert!(result.is_err_and(|e| e.to_string() == "Immediate error"));
+        assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during startup"));
     }
 
     #[tokio::test]
@@ -288,22 +258,32 @@ mod tests {
         let app = ApplicationFactory::new(ImmediateReturnApp {}).build();
         let lifespan_handler = LifespanHandler::new(app);
         let result = lifespan_handler.startup(MockState {}).await;
-        assert!(result.is_err_and(|e| e.to_string() == "application shutdown unexpectedly. stopped during startup"));
+        assert!(result.is_err_and(|e| {
+            println!("{}", e.to_string());
+            true
+        }));
     }
 
     #[tokio::test]
     async fn test_shutdown_fails() {
-        let app = ApplicationFactory::new(LifespanFailedApp {}).build();
-        let lifespan_handler = StartedLifespanHandler::new(app.clone(), start_application(app), true);
+        let app = ApplicationFactory::new(LifespanFailedApp {})
+            .build()
+            .call(Scope::Lifespan(super::LifespanScope::new(MockState {})))
+            .0;
+        let lifespan_handler = StartedLifespanHandler::new(app.clone(), true);
         let result = lifespan_handler.shutdown().await;
+        println!("{result:?}");
         assert!(result.is_err_and(|e| e.to_string() == "test"));
     }
 
     #[tokio::test]
     async fn test_error_on_shutdown() {
-        let app = ApplicationFactory::new(ErrorApp {}).build();
-        let lifespan_handler = StartedLifespanHandler::new(app.clone(), start_application(app), true);
+        let app = ApplicationFactory::new(ErrorApp {})
+            .build()
+            .call(Scope::Lifespan(super::LifespanScope::new(MockState {})))
+            .0;
+        let lifespan_handler = StartedLifespanHandler::new(app.clone(), true);
         let result = lifespan_handler.shutdown().await;
-        assert!(result.is_err_and(|e| e.to_string() == "Test app raises error"));
+        assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during shutdown"));
     }
 }

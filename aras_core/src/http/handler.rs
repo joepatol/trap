@@ -7,39 +7,20 @@ use http_body_util::{BodyExt, StreamBody};
 use hyper::body::{Body, Frame};
 use hyper::Request;
 
-use crate::application::Application;
-use crate::asgispec::{ASGICallable, ASGIReceiveEvent, ASGISendEvent, Scope, State};
+use crate::application::RunningApplication;
+use crate::asgispec::{ASGIReceiveEvent, ASGISendEvent};
 use crate::error::{Error, Result};
 use crate::types::Response;
 
-pub async fn serve_http<B, S, T>(asgi_app: Application<S, T>, request: Request<B>, scope: Scope<S>) -> Result<Response>
+pub async fn serve_http<B>(called_app: RunningApplication, request: Request<B>) -> Result<Response>
 where
     B: Body + Send + 'static,
-    S: State + 'static,
-    T: ASGICallable<S> + 'static,
-    <B as hyper::body::Body>::Error: Debug,
-{
-    let app_clone = asgi_app.clone();
-    match tokio::try_join!(app_clone.call(scope), transport(asgi_app, request)) {
-        Ok((_, response)) => Ok(response),
-        Err(e) => Err(e),
-    }
-}
-
-async fn transport<B, S, T>(mut asgi_app: Application<S, T>, request: Request<B>) -> Result<Response>
-where
-    B: Body + Send + 'static,
-    S: State + 'static,
-    T: ASGICallable<S> + 'static,
     <B as hyper::body::Body>::Error: Debug,
 {
     let result = tokio::try_join!(
-        stream_request_body(asgi_app.clone(), request.into_body()),
-        build_response(asgi_app.clone()),
+        stream_request_body(called_app.clone(), request.into_body()),
+        build_response(called_app.clone()),
     );
-
-    asgi_app.send_to(ASGIReceiveEvent::new_http_disconnect()).await?;
-    asgi_app.disconnect_client().await;
 
     match result {
         Ok((_, response)) => Ok(response),
@@ -47,11 +28,9 @@ where
     }
 }
 
-async fn stream_request_body<B, S, T>(asgi_app: Application<S, T>, body: B) -> Result<()>
+async fn stream_request_body<B>(asgi_app: RunningApplication, body: B) -> Result<()>
 where
     B: Body + Send + 'static,
-    S: State + 'static,
-    T: ASGICallable<S> + 'static,
     <B as hyper::body::Body>::Error: Debug,
 {
     // This implementation will always send an additional ASGI message with an
@@ -85,14 +64,10 @@ where
     Ok(())
 }
 
-async fn build_response<S, T>(mut asgi_app: Application<S, T>) -> Result<Response>
-where
-    S: State + 'static,
-    T: ASGICallable<S> + 'static,
-{
+async fn build_response(mut asgi_app: RunningApplication) -> Result<Response> {
     let mut builder = hyper::Response::builder();
 
-    let body = match asgi_app.receive_from().await? {
+    let body = match asgi_app.receive_from().await {
         Some(ASGISendEvent::HTTPResponseStart(msg)) => {
             builder = builder.status(msg.status);
             for (bytes_key, bytes_value) in msg.headers.into_iter() {
@@ -100,29 +75,34 @@ where
             }
             build_body_stream(asgi_app).await
         }
-        msg => return Err(Error::unexpected_asgi_message(Box::new(msg))),
+        None => {
+            return Err(Error::unexpected_shutdown(
+                "Application",
+                "stopped without sending HTTP response".into(),
+            ))
+        }
+        Some(msg) => return Err(Error::unexpected_asgi_message(Box::new(msg))),
     };
 
     Ok(builder.body(body)?)
 }
 
-async fn build_body_stream<S, T>(mut asgi_app: Application<S, T>) -> BoxBody<Bytes, Error>
-where
-    S: State + 'static,
-    T: ASGICallable<S> + 'static,
-{
+async fn build_body_stream(mut asgi_app: RunningApplication) -> BoxBody<Bytes, Error> {
     let stream = async_stream::stream! {
         let mut more_data = true;
         loop {
             if more_data == false {
+                asgi_app.send_to(ASGIReceiveEvent::new_http_disconnect()).await?;
+                asgi_app.close().await;
                 break
             }
-            match asgi_app.receive_from().await? {
+            match asgi_app.receive_from().await {
                 Some(ASGISendEvent::HTTPResponseBody(msg)) => {
                     more_data = msg.more_body;
                     yield Ok(msg.body)
-                }
-                msg => yield Err(Error::unexpected_asgi_message(Box::new(msg))),
+                },
+                Some(msg) => yield Err(Error::unexpected_asgi_message(Box::new(msg))),
+                None => yield Err(Error::unexpected_shutdown("Application", "stopped while sending HTTP response body".into())),
             }
         }
     };
@@ -178,7 +158,7 @@ mod tests {
             ]);
             loop {
                 match (receive)().await {
-                    Ok(ASGIReceiveEvent::HTTPRequest(msg)) => {
+                    ASGIReceiveEvent::HTTPRequest(msg) => {
                         body.extend(msg.body.into_iter());
                         if msg.more_body {
                             continue;
@@ -195,40 +175,13 @@ mod tests {
                             };
                         };
                     }
-                    Ok(ASGIReceiveEvent::HTTPDisconnect(_)) => {
+                    ASGIReceiveEvent::HTTPDisconnect(_) => {
                         break;
                     }
-                    Err(e) => return Err(e),
                     _ => return Err(Error::custom("Invalid message received from server")),
                 }
             }
             Ok(())
-        }
-    }
-
-    #[derive(Clone, Debug)]
-    struct CallSendAfterDisconnectApp {}
-
-    impl ASGICallable<MockState> for CallSendAfterDisconnectApp {
-        async fn call(&self, _scope: Scope<MockState>, receive: ReceiveFn, send: SendFn) -> Result<()> {
-            let body = "ok".as_bytes().to_vec();
-            loop {
-                match (receive)().await {
-                    Ok(ASGIReceiveEvent::HTTPRequest(_)) => {
-                        let start_msg = ASGISendEvent::new_http_response_start(200, Vec::new());
-                        send(start_msg).await?;
-                        let body_msg = ASGISendEvent::new_http_response_body(body.clone(), false);
-                        send(body_msg).await?;
-                    }
-                    Ok(ASGIReceiveEvent::HTTPDisconnect(_)) => {
-                        let send_out = send(ASGISendEvent::new_http_response_start(200, Vec::new())).await;
-                        assert!(send_out.is_err_and(|e| e.to_string() == "Disconnected client"));
-                        return Ok(());
-                    }
-                    Err(e) => return Err(e),
-                    _ => return Err(Error::custom("Unexpected message received from server")),
-                }
-            }
         }
     }
 
@@ -255,8 +208,40 @@ mod tests {
 
     impl ASGICallable<MockState> for ErrorInLoopApp {
         async fn call(&self, _scope: Scope<MockState>, receive: ReceiveFn, _send: SendFn) -> super::Result<()> {
-            _ = receive().await?;
+            _ = receive().await;
             Err(Error::custom("Error in loop"))
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct ErrorInBodyLoopApp;
+
+    impl ASGICallable<MockState> for ErrorInBodyLoopApp {
+        async fn call(&self, _scope: Scope<MockState>, receive: ReceiveFn, send: SendFn) -> super::Result<()> {
+            _ = receive().await;
+            send(ASGISendEvent::new_http_response_start(200, Vec::new())).await?;
+            Err(Error::custom("Error in loop"))
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct AssertSendErrorApp;
+
+    impl ASGICallable<MockState> for AssertSendErrorApp {
+        async fn call(&self, _scope: Scope<MockState>, receive: ReceiveFn, send: SendFn) -> super::Result<()> {
+            loop {
+                match receive().await {
+                    ASGIReceiveEvent::HTTPDisconnect(_) => {
+                        return send(ASGISendEvent::new_shutdown_complete()).await
+                    }
+                    ASGIReceiveEvent::HTTPRequest(_) => {
+                        send(ASGISendEvent::new_http_response_start(200, Vec::new())).await?;
+                        send(ASGISendEvent::new_http_response_body(Vec::new(), false)).await?;
+                        continue
+                    }
+                    _ => return Err(Error::custom("invalid message"))
+                }
+            }
         }
     }
 
@@ -269,7 +254,7 @@ mod tests {
                 String::from("a").as_bytes().to_vec(),
                 String::from("header").as_bytes().to_vec(),
             )]);
-            _ = receive().await?;
+            _ = receive().await;
             let res_start_msg = ASGISendEvent::new_http_response_start(200, headers);
             send(res_start_msg).await?;
             let first_body = ASGISendEvent::new_http_response_body(String::from("hello").as_bytes().to_vec(), true);
@@ -293,7 +278,7 @@ mod tests {
             .expect("Failed to build request");
         let scope = Scope::HTTP(HTTPScope::from_hyper_request(&request, MockState {}));
 
-        let response = serve_http(app, request, scope).await.unwrap();
+        let response = serve_http(app.call(scope).0, request).await.unwrap();
         assert!(response.status() == StatusCode::OK);
         let response_body = response_to_body_string(response).await;
 
@@ -308,9 +293,9 @@ mod tests {
             .expect("Failed to build request");
         let scope = Scope::HTTP(HTTPScope::from_hyper_request(&request, MockState {}));
 
-        let response = serve_http(app, request, scope).await;
-        // assert!(response.status() == StatusCode::OK);
-        let response_body = response_to_body_string(response.unwrap()).await;
+        let response = serve_http(app.call(scope).0, request).await.unwrap();
+        assert!(response.status() == StatusCode::OK);
+        let response_body = response_to_body_string(response).await;
         assert!(response_body == "hello world more body")
     }
 
@@ -321,9 +306,11 @@ mod tests {
             .body("hello world".to_string())
             .expect("Failed to build request");
         let scope = Scope::HTTP(HTTPScope::from_hyper_request(&request, MockState {}));
-        let response = serve_http(app, request, scope).await;
+        let response = serve_http(app.call(scope).0, request).await;
 
-        assert!(response.is_err_and(|e| e.to_string() == "Unexpected ASGI message received. Some(AppReturned)"));
+        assert!(response.is_err_and(
+            |e| e.to_string() == "Application shutdown unexpectedly. stopped without sending HTTP response"
+        ));
     }
 
     #[tokio::test]
@@ -333,9 +320,11 @@ mod tests {
             .body("hello world".to_string())
             .expect("Failed to build request");
         let scope = Scope::HTTP(HTTPScope::from_hyper_request(&request, MockState {}));
-        let response = serve_http(app, request, scope).await;
+        let response = serve_http(app.call(scope).0, request).await;
 
-        assert!(response.is_err_and(|e| e.to_string() == "Immediate error"));
+        assert!(response.is_err_and(
+            |e| e.to_string() == "Application shutdown unexpectedly. stopped without sending HTTP response"
+        ));
     }
 
     #[tokio::test]
@@ -345,10 +334,27 @@ mod tests {
             .body("hello world".to_string())
             .expect("Failed to build request");
         let scope = Scope::HTTP(HTTPScope::from_hyper_request(&request, MockState {}));
-        let response = serve_http(app, request, scope).await;
+        let response = serve_http(app.call(scope).0, request).await;
 
-        assert!(response.is_err_and(|e| e.to_string() == "Error in loop"));
+        assert!(response.is_err_and(
+            |e| e.to_string() == "Application shutdown unexpectedly. stopped without sending HTTP response"
+        ));
     }
+
+    #[tokio::test]
+    async fn test_app_raises_error_while_sending_body() {
+        let app = ApplicationFactory::new(ErrorInBodyLoopApp {}).build();
+        let request = Request::builder()
+            .body("hello world".to_string())
+            .expect("Failed to build request");
+        let scope = Scope::HTTP(HTTPScope::from_hyper_request(&request, MockState {}));
+        let response = serve_http(app.call(scope).0, request).await;
+
+        let body = response.unwrap().into_body().collect().await;
+        assert!(body.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped while sending HTTP response body"))
+
+    }
+
 
     #[tokio::test]
     async fn test_error_while_streaming_body() {
@@ -358,10 +364,10 @@ mod tests {
             .expect("Failed to build request");
         let scope = Scope::HTTP(HTTPScope::from_hyper_request(&request, MockState {}));
 
-        let response = serve_http(app, request, scope).await.unwrap();
+        let response = serve_http(app.call(scope).0, request).await.unwrap();
         let body = response.into_body().collect().await;
 
-        assert!(body.is_err_and(|e| e.to_string() == "Unexpected ASGI message received. Some(StartupComplete(LifespanStartupComplete { type_: \"lifespan.startup.complete\" }))"));
+        assert!(body.is_err_and(|e| e.to_string() == "Unexpected ASGI message received. StartupComplete(LifespanStartupComplete { type_: \"lifespan.startup.complete\" })"));
     }
 
     #[tokio::test]
@@ -372,7 +378,7 @@ mod tests {
             .expect("Failed to build request");
         let scope = Scope::HTTP(HTTPScope::from_hyper_request(&request, MockState {}));
 
-        let response = serve_http(app, request, scope).await.unwrap();
+        let response = serve_http(app.call(scope).0, request).await.unwrap();
         assert!(response.status() == StatusCode::OK);
         let headers = response.headers();
 
@@ -381,13 +387,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_send_call_after_disconnect_is_err() {
-        let app = ApplicationFactory::new(CallSendAfterDisconnectApp {}).build();
+    async fn test_send_is_error_after_disconnect() {
         let request = Request::builder()
-            .body("hello world".to_string())
+            .body(String::default())
             .expect("Failed to build request");
         let scope = Scope::HTTP(HTTPScope::from_hyper_request(&request, MockState {}));
+        let (app, rx) = ApplicationFactory::new(AssertSendErrorApp {}).build().call(scope);
+        
+        let response = serve_http(app.clone(), request).await;
+        assert!(response.is_ok());
+        let body = response_to_body_string(response.unwrap()).await;
+        assert!(body == "");
 
-        let _ = serve_http(app, request, scope).await; // App asserts send raises an error
+        let app_out = rx.await.unwrap();
+        assert!(app_out.is_err_and(|e| e.to_string() == "Disconnected client"))
     }
 }

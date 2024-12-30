@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WebsocketConnectEvent {
     pub type_: String,
 }
@@ -9,7 +9,7 @@ impl WebsocketConnectEvent {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WebsocketAcceptEvent {
     pub type_: String,
     pub subprotocol: Option<String>,
@@ -25,7 +25,7 @@ impl WebsocketAcceptEvent {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WebsocketReceiveEvent {
     pub type_: String,
     pub bytes: Option<Vec<u8>>,
@@ -42,7 +42,7 @@ impl WebsocketReceiveEvent {
     } 
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WebsocketSendEvent {
     pub type_: String,
     pub bytes: Option<Vec<u8>>,
@@ -59,7 +59,7 @@ impl WebsocketSendEvent {
     } 
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WebsocketDisconnectEvent {
     pub type_: String,
     pub code: usize,
@@ -77,7 +77,7 @@ impl Default for WebsocketDisconnectEvent {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WebsocketCloseEvent {
     pub type_: String,
     pub code: usize,

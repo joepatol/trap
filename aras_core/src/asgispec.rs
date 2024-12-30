@@ -12,7 +12,7 @@ pub const ASGI_SPEC_VERSION: &str = "2.4";
 
 pub type SendFn = Arc<dyn Fn(ASGISendEvent) -> Box<dyn Future<Output = Result<()>> + Unpin + Sync + Send> + Send + Sync>;
 
-pub type ReceiveFn = Arc<dyn Fn() -> Box<dyn Future<Output = Result<ASGIReceiveEvent>> + Unpin + Sync + Send> + Send + Sync>;
+pub type ReceiveFn = Arc<dyn Fn() -> Box<dyn Future<Output = ASGIReceiveEvent> + Unpin + Sync + Send> + Send + Sync>;
 
 pub trait State: Clone + Send + Sync + Debug {}
 
@@ -52,7 +52,7 @@ impl ASGIScope {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ASGISendEvent {
     StartupComplete(LifespanStartupComplete),
     StartupFailed(LifespanStartupFailed),
@@ -63,11 +63,9 @@ pub enum ASGISendEvent {
     WebsocketAccept(WebsocketAcceptEvent),
     WebsocketClose(WebsocketCloseEvent),
     WebsocketSend(WebsocketSendEvent),
-    Error(String), // Internal message send by the app if it quits with an error
-    AppReturned,   // Internal message send by the app once it quits
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ASGIReceiveEvent {
     Startup(LifespanStartup),
     Shutdown(LifespanShutdown),
@@ -114,14 +112,6 @@ impl ASGISendEvent {
     pub fn new_websocket_send(bytes: Option<Vec<u8>>, text: Option<String>) -> Self {
         Self::WebsocketSend(WebsocketSendEvent::new(bytes, text))
     }
-
-    pub fn new_error(err: String) -> Self {
-        Self::Error(err)
-    }
-
-    pub fn new_app_stopped() -> Self {
-        Self::AppReturned
-    }
 }
 
 impl ASGIReceiveEvent {
@@ -166,8 +156,6 @@ impl std::fmt::Display for ASGISendEvent {
             Self::WebsocketAccept(s) => write!(f, "{:?}", s),
             Self::WebsocketClose(s) => write!(f, "{:?}", s),
             Self::WebsocketSend(s) => write!(f, "{:?}", s),
-            Self::Error(s) => write!(f, "Application errored, message: {s}"),
-            Self::AppReturned => write!(f, "Application quit"),
         }
     }
 }
