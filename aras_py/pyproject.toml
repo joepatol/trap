@@ -1,0 +1,33 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "aras"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dynamic = ["version"]
+
+[project.scripts]
+aras = "aras_py.cli:cli"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+
+dependencies = [
+    "click >= 8.0.0"
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "mypy",
+    "requests",
+    "types-requests",
+    "pytest-timeout",
+    "testcontainers",
+]
