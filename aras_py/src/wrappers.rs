@@ -1,14 +1,13 @@
-use std::{fmt::Debug, sync::Arc, sync::Mutex};
+use std::{fmt::Debug, sync::{Arc, Mutex}};
 
 use log::{debug, error};
 use pyo3::{
-    exceptions::{PyIOError, PyRuntimeError, PyValueError},
+    exceptions::{PyRuntimeError, PyValueError},
     prelude::*,
     types::{PyDict, PyMapping, PyString},
 };
 use pyo3_async_runtimes;
-use aras_core::State;
-use aras_core::{ASGICallable, ASGIReceiveEvent, ASGISendEvent, Error, ReceiveFn, Result, Scope, SendFn};
+use asgispec::prelude::*;
 
 use super::convert;
 
@@ -27,6 +26,12 @@ impl PyState {
 }
 
 impl State for PyState {}
+
+impl std::fmt::Display for PyState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
 
 #[pymethods]
 impl PyState {
@@ -177,11 +182,15 @@ impl PySend {
         let converted_message: PyASGISendEvent = Python::with_gil(|py: Python| message.extract(py))?;
         (self.send)(converted_message.0)
             .await
+            // TODO: how to check erro type?
+            // .map_err(|e| {
+            //     match e {
+            //         Error::DisconnectedClient(e) => PyIOError::new_err(format!("{e}")),
+            //         e => PyRuntimeError::new_err(format!("Error in ASGI 'send': {}", e))
+            //     }
+            // })
             .map_err(|e| {
-                match e {
-                    Error::DisconnectedClient(e) => PyIOError::new_err(format!("{e}")),
-                    e => PyRuntimeError::new_err(format!("Error in ASGI 'send': {}", e))
-                }
+                PyRuntimeError::new_err(format!("Error in ASGI 'send': {}", e))
             })?;
         Ok(())
     }
@@ -226,27 +235,34 @@ impl PyASGIAppWrapper {
     }
 }
 
-impl ASGICallable<PyState> for PyASGIAppWrapper {
-    async fn call(&self, scope: Scope<PyState>, receive: ReceiveFn, send: SendFn) -> Result<()> {
+impl ASGIApplication<PyState> for PyASGIAppWrapper {
+    async fn call(&self, scope: Scope<PyState>, receive: ReceiveFn, send: SendFn) -> ASGIResult<()> {
         let future = Python::with_gil(|py| {
             let maybe_awaitable = self.py_application.call1(
                 py,
                 (
-                    PyScope::new(scope).into_pyobject(py)?,
+                    PyScope::new(scope).into_pyobject(py).unwrap(),
                     PyReceive::new(receive),
                     PySend::new(send),
                 ),
             );
 
-            Ok(pyo3_async_runtimes::into_future_with_locals(
+            pyo3_async_runtimes::into_future_with_locals(
                 &self.task_locals,
-                maybe_awaitable?.bind(py).to_owned(),
-            )?)
+                maybe_awaitable.unwrap().bind(py).to_owned(),
+            ).unwrap()
+
+            // Ok(pyo3_async_runtimes::into_future_with_locals(
+            //     &self.task_locals,
+            //     maybe_awaitable?.bind(py).to_owned(),
+            // )?)
         });
         future
-            .map_err(|e: PyErr| Error::custom(e.to_string()))?
+            // TODO: remove unwrap
+            // .map_err(|e: PyErr| Error::custom(e.to_string()).into())?
             .await
-            .map_err(|e: PyErr| Error::custom(e.to_string()))?;
+            .unwrap();
+            // .map_err(|e: PyErr| Error::custom(e.to_string()).into())?;
 
         Ok(())
     }

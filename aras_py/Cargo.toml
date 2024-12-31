@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 aras = { path = "../aras" }
+asgispec = { path = "../asgispec" }
 pyo3 = { version = "^0.23.3", features = ["experimental-async"] }
 pyo3-async-runtimes = { version = "0.23", features = ["attributes", "tokio-runtime"] }
 log = "0.4.22"

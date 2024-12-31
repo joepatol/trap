@@ -2,8 +2,10 @@ use log::error;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::{PyBytes, PyDict, PyList, PyMapping, PyNone, PyString};
 use pyo3::{prelude::*, IntoPyObjectExt};
+use asgispec::prelude::*;
+use asgispec::events::*;
+use asgispec::scope::*;
 
-use aras_core::*;
 use super::PyState;
 
 pub fn parse_py_http_response_start(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEvent> {
@@ -100,13 +102,13 @@ pub fn lifespan_scope_into_py<'py>(py: Python<'py>, scope: LifespanScope<PyState
     Ok(python_result_dict)
 }
 
-pub fn lifespan_startup_into_py<'py>(py: Python<'py>, event: LifespanStartup) -> PyResult<Bound<'py, PyDict>> {
+pub fn lifespan_startup_into_py<'py>(py: Python<'py>, event: LifespanStartupEvent) -> PyResult<Bound<'py, PyDict>> {
     let python_result_dict = PyDict::new(py);
     python_result_dict.set_item("type", event.type_.into_pyobject(py)?)?;
     Ok(python_result_dict)
 }
 
-pub fn lifespan_shutdown_into_py<'py>(py: Python<'py>, event: LifespanShutdown) -> PyResult<Bound<'py, PyDict>> {
+pub fn lifespan_shutdown_into_py<'py>(py: Python<'py>, event: LifespanShutdownEvent) -> PyResult<Bound<'py, PyDict>> {
     let python_result_dict = PyDict::new(py);
     python_result_dict.set_item("type", event.type_.into_pyobject(py)?)?;
     Ok(python_result_dict)

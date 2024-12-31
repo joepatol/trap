@@ -44,6 +44,7 @@ name = "aras_py"
 version = "0.3.0"
 dependencies = [
  "aras",
+ "asgispec",
  "log",
  "pyo3",
  "pyo3-async-runtimes",
