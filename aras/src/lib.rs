@@ -15,6 +15,6 @@ pub use crate::server::{Server, ServerConfig};
 
 pub async fn serve<S: State + 'static, T: ASGIApplication<S> + 'static>(app: T, state: S, config: Option<ServerConfig>) -> Result<()> {
     let mut server = Server::new(app, state);
-    server.serve(config.unwrap_or_default()).await?;
+    server.serve_old(config.unwrap_or_default()).await?;
     Ok(())
 }

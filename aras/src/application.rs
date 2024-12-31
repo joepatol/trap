@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -89,7 +88,7 @@ impl<S: State, T: ASGIApplication<S>> ApplicationFactory<S, T> {
         let (app_tx, server_rx) = async_channel::unbounded();
         let (server_tx, app_rx) = async_channel::unbounded();
 
-        let receive_closure = move || -> Box<dyn Future<Output = ASGIReceiveEvent> + Sync + Send + Unpin> {
+        let receive_closure = move || -> ReceiveFuture {
             let rxc = app_rx.clone();
             Box::new(Box::pin(async move {
                 match rxc.recv().await {
@@ -102,7 +101,7 @@ impl<S: State, T: ASGIApplication<S>> ApplicationFactory<S, T> {
             }))
         };
 
-        let send_closure = move |message: ASGISendEvent| -> Box<dyn Future<Output = ASGIResult<()>> + Sync + Send + Unpin> {
+        let send_closure = move |message: ASGISendEvent| -> SendFuture {
             let txc = app_tx.clone();
             Box::new(Box::pin(async move {
                 if let Err(_) = txc.send(message).await {

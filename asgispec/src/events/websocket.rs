@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketConnectEvent {
     pub type_: String,
 }
@@ -16,7 +16,7 @@ impl std::fmt::Display for WebsocketConnectEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketAcceptEvent {
     pub type_: String,
     pub subprotocol: Option<String>,
@@ -48,7 +48,7 @@ impl std::fmt::Display for WebsocketAcceptEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketReceiveEvent {
     pub type_: String,
     pub bytes: Option<Vec<u8>>,
@@ -82,7 +82,7 @@ impl std::fmt::Display for WebsocketReceiveEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketSendEvent {
     pub type_: String,
     pub bytes: Option<Vec<u8>>,
@@ -116,7 +116,7 @@ impl std::fmt::Display for WebsocketSendEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketDisconnectEvent {
     pub type_: String,
     pub code: usize,
@@ -142,7 +142,7 @@ impl std::fmt::Display for WebsocketDisconnectEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketCloseEvent {
     pub type_: String,
     pub code: usize,

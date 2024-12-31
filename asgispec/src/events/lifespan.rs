@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LifespanStartupEvent {
     pub type_: String,
 }
@@ -18,7 +18,7 @@ impl std::fmt::Display for LifespanStartupEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LifespanStartupCompleteEvent {
     pub type_: String,
 }
@@ -38,7 +38,7 @@ impl std::fmt::Display for LifespanStartupCompleteEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LifespanStartupFailedEvent {
     pub type_: String,
     pub message: String,
@@ -61,7 +61,7 @@ impl std::fmt::Display for LifespanStartupFailedEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LifespanShutdownEvent {
     pub type_: String,
 }
@@ -81,7 +81,7 @@ impl std::fmt::Display for LifespanShutdownEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LifespanShutdownCompleteEvent {
     pub type_: String,
 }
@@ -101,7 +101,7 @@ impl std::fmt::Display for LifespanShutdownCompleteEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LifespanShutdownFailedEvent {
     pub type_: String,
     pub message: String,

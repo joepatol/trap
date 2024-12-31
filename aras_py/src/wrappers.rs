@@ -237,6 +237,7 @@ impl PyASGIAppWrapper {
 
 impl ASGIApplication<PyState> for PyASGIAppWrapper {
     async fn call(&self, scope: Scope<PyState>, receive: ReceiveFn, send: SendFn) -> ASGIResult<()> {
+        // TODO: remove unwraps
         let future = Python::with_gil(|py| {
             let maybe_awaitable = self.py_application.call1(
                 py,
@@ -258,7 +259,7 @@ impl ASGIApplication<PyState> for PyASGIAppWrapper {
             // )?)
         });
         future
-            // TODO: remove unwrap
+            // TODO: make the conversions work
             // .map_err(|e: PyErr| Error::custom(e.to_string()).into())?
             .await
             .unwrap();

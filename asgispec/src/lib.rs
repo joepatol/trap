@@ -3,13 +3,20 @@ pub mod spec;
 pub mod scope;
 pub mod events;
 
+use ctrlc;
+
 pub async fn serve_asgi<S, A, T>(server: S, application: A, state: T) -> std::result::Result<(), Box<dyn std::error::Error>> 
 where
     T: spec::State,
-    S: spec::ASGIServer<T>,
     A: spec::ASGIApplication<T>,
+    S: spec::ASGIServer<T, A>,
 {
-    // TODO: actually use cancel token here. Should this function be async? Current idea is that server starts the runtime. So the spec is runtime independent.
-    let _ = server.serve(application, state).await?;
+    // TODO: test the ctrlc handler
+    let token = server.serve(application, state).await?;
+
+     ctrlc::set_handler(move || token.send(())
+        .expect("Could not send signal on channel."))
+        .expect("Error setting Ctrl-C handler");
+
     Ok(())
 }

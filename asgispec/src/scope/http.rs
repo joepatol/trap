@@ -1,6 +1,6 @@
 use crate::spec::{ASGIScope, State};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HTTPScope<S: State> {
     pub type_: String,
     pub asgi: ASGIScope,

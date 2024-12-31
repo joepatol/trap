@@ -11,11 +11,10 @@ pub const ASGI_VERSION: &str = "3.0";
 pub const ASGI_SPEC_VERSION: &str = "2.4";
 
 pub type ASGIResult<T> = std::result::Result<T, Arc<dyn Error + Send + Sync>>;
-
-pub type SendFn =
-    Arc<dyn Fn(ASGISendEvent) -> Box<dyn Future<Output = ASGIResult<()>> + Unpin + Sync + Send> + Send + Sync>;
-
-pub type ReceiveFn = Arc<dyn Fn() -> Box<dyn Future<Output = ASGIReceiveEvent> + Unpin + Sync + Send> + Send + Sync>;
+pub type SendFuture = Box<dyn Future<Output = ASGIResult<()>> + Unpin + Sync + Send>;
+pub type ReceiveFuture = Box<dyn Future<Output = ASGIReceiveEvent> + Unpin + Sync + Send>;
+pub type SendFn = Arc<dyn Fn(ASGISendEvent) -> SendFuture + Send + Sync>;
+pub type ReceiveFn = Arc<dyn Fn() -> ReceiveFuture + Send + Sync>;
 
 pub trait State: Clone + Send + Sync + Display {}
 
@@ -23,11 +22,11 @@ pub trait ASGIApplication<S: State>: Send + Sync + Clone {
     fn call(&self, scope: Scope<S>, receive: ReceiveFn, send: SendFn) -> impl Future<Output = ASGIResult<()>> + Send;
 }
 
-pub trait ASGIServer<S: State> {
-    fn serve(&self, application: impl ASGIApplication<S>, state: S) -> impl Future<Output = ASGIResult<Sender<()>>> + Send;
+pub trait ASGIServer<S: State, A: ASGIApplication<S>> {
+    fn serve(&self, application: A, state: S) -> impl Future<Output = ASGIResult<Sender<()>>> + Send;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Scope<S: State> {
     HTTP(HTTPScope<S>),
     Lifespan(LifespanScope<S>),
@@ -44,7 +43,7 @@ impl<S: State> std::fmt::Display for Scope<S> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ASGIScope {
     pub version: String,
     pub spec_version: String,
@@ -73,7 +72,7 @@ impl std::fmt::Display for ASGIScope {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ASGISendEvent {
     StartupComplete(LifespanStartupCompleteEvent),
     StartupFailed(LifespanStartupFailedEvent),
@@ -86,7 +85,7 @@ pub enum ASGISendEvent {
     WebsocketSend(WebsocketSendEvent),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ASGIReceiveEvent {
     Startup(LifespanStartupEvent),
     Shutdown(LifespanShutdownEvent),

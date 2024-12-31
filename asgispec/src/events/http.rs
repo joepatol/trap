@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HTTPRequestEvent {
     pub type_: String,
     pub body: Vec<u8>,
@@ -25,7 +25,7 @@ impl std::fmt::Display for HTTPRequestEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HTTPResponseStartEvent {
     pub type_: String,
     pub status: u16,
@@ -54,7 +54,7 @@ impl std::fmt::Display for HTTPResponseStartEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HTTPResonseBodyEvent {
     pub type_: String,
     pub body: Vec<u8>,
@@ -81,7 +81,7 @@ impl std::fmt::Display for HTTPResonseBodyEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HTTPDisconnectEvent {
     pub type_: String,
 }

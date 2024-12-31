@@ -32,8 +32,14 @@ impl<S: State, T: ASGIApplication<S>> Server<S, T> {
     }
 }
 
+impl<S: State + 'static, T: ASGIApplication<S> + 'static> ASGIServer<S, T> for Server<S, T> {
+    async fn serve(&self, application: T, state: S) -> ASGIResult<std::sync::mpsc::Sender<()>> {
+        todo!()
+    }
+}
+
 impl<S: State + 'static, T: ASGIApplication<S> + 'static> Server<S, T> {
-    pub async fn serve(&mut self, config: ServerConfig) -> Result<()> {
+    pub async fn serve_old(&mut self, config: ServerConfig) -> Result<()> {
         let lifespan_handler = 
             LifespanHandler::new(self.app_factory.build())
             .startup(self.state.clone())
