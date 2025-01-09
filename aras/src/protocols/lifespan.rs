@@ -3,32 +3,27 @@ use asgispec::scope::LifespanScope;
 use derive_more::Constructor;
 use log::{error, info, warn};
 
-use crate::application::{Application, RunningApplication};
-use crate::error::{Error, Result};
+use crate::application::{ApplicationWrapper, RunningApplication};
+use crate::error::{Error, Result, UnexpectedShutdownSrc as SRC};
 
 #[derive(Constructor)]
-pub struct LifespanHandler<S: State + 'static, T: ASGIApplication<S> + 'static> {
-    application: Application<S, T>,
-}
+pub(crate) struct LifespanHandler;
 
-impl<S, T> LifespanHandler<S, T>
-where
-    S: State,
-    T: ASGIApplication<S>,
-{
-    pub async fn startup(self, state: S) -> Result<StartedLifespanHandler> {
+impl LifespanHandler {
+    pub async fn startup<A>(self, application: A, state: A::State) -> Result<StartedLifespanHandler>
+    where
+        A: ASGIApplication + 'static,
+    {
         info!("Application starting");
 
-        let app_clone = self.application.clone();
         let state_clone = state.clone();
 
-        let called_app = app_clone
-            .call(Scope::Lifespan(LifespanScope::new(
-                ASGIScope::default(),
-                Some(state_clone),
-            )))
-            .0;
-        let result = startup_loop(called_app.clone()).await;
+        let application = ApplicationWrapper::from(&application);
+        let mut called_app = application.call(Scope::Lifespan(LifespanScope::new(
+            ASGIScope::default(),
+            Some(state_clone),
+        )));
+        let result = startup_loop(&mut called_app).await;
 
         match result {
             Ok(use_lifespan) => {
@@ -69,13 +64,13 @@ impl StartedLifespanHandler {
     }
 }
 
-async fn startup_loop(mut application: RunningApplication) -> Result<bool> {
+async fn startup_loop(application: &mut RunningApplication) -> Result<bool> {
     application.send_to(ASGIReceiveEvent::new_lifespan_startup()).await?;
     match application.receive_from().await {
         Some(ASGISendEvent::StartupComplete(_)) => Ok(true),
         Some(ASGISendEvent::StartupFailed(event)) => Err(Error::custom(event.message)),
         None => Err(Error::unexpected_shutdown(
-            "Application",
+            SRC::Application,
             "stopped during startup".into(),
         )),
         _ => {
@@ -92,7 +87,7 @@ async fn shutdown_loop(mut application: RunningApplication) -> Result<()> {
         Some(ASGISendEvent::ShutdownFailed(event)) => Err(Error::custom(event.message)),
         Some(msg) => Err(Error::unexpected_asgi_message(Box::new(msg))),
         None => Err(Error::unexpected_shutdown(
-            "Application",
+            SRC::Application,
             "stopped during shutdown".into(),
         )),
     }

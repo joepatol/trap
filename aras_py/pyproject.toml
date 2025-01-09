@@ -13,7 +13,7 @@ classifiers = [
 dynamic = ["version"]
 
 [project.scripts]
-aras = "aras_py.cli:cli"
+aras = "aras.cli:cli"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]

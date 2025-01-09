@@ -1,93 +1,46 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 
-use tokio::sync::oneshot::Receiver as OneshotReceiver;
+use asgispec::prelude::*;
 use derive_more::derive::Constructor;
 use log::{error, warn};
-use asgispec::prelude::*;
+use tokio::sync::oneshot::{error::TryRecvError, Receiver as OneshotReceiver};
 
-use crate::error::Result;
-use crate::Error;
+use crate::error::{Result, Error};
 
-#[derive(Constructor, Clone)]
-pub struct RunningApplication {
-    send_queue: async_channel::Sender<ASGIReceiveEvent>,
-    receive_queue: async_channel::Receiver<ASGISendEvent>,
-}
-
-impl RunningApplication {
-    pub async fn close(&mut self) {
-        self.receive_queue.close();
-    }
-
-    pub async fn send_to(&self, message: ASGIReceiveEvent) -> Result<()> {
-        let full = self.send_queue.is_full();
-        println!("Channel full: {full}");
-        let rec_c = self.send_queue.receiver_count();
-        println!("Channel receiver count: {rec_c}");
-        println!("Channel sender count: {}", self.send_queue.sender_count());
-        println!("Channel closed: {}", self.send_queue.is_closed());
-        if let Err(e) = self.send_queue.send(message).await {
-            warn!("Failed to send message to app. {e}");
-            return Err(Error::custom(e.to_string()))
-        };
-        println!("send");
-        Ok(())
-    }
-
-    pub async fn receive_from(&mut self) -> Option<ASGISendEvent> {
-        self.receive_queue.recv().await.ok()
-    }
-}
-
-#[derive(Constructor, Clone)]
-pub struct Application<S: State + 'static, T: ASGIApplication<S> + 'static> {
-    asgi_callable: T,
+#[derive(Constructor)]
+pub(crate) struct ApplicationWrapper<A: ASGIApplication + 'static> {
+    inner: A,
     send: SendFn,
     receive: ReceiveFn,
     send_queue: async_channel::Sender<ASGIReceiveEvent>,
     receive_queue: async_channel::Receiver<ASGISendEvent>,
-    phantom_data: PhantomData<S>,
 }
 
-impl<S: State, T: ASGIApplication<S>> Application<S, T> {
-    pub fn call(self, scope: Scope<S>) -> (RunningApplication, OneshotReceiver<ASGIResult<()>>) {
+impl<A: ASGIApplication> ApplicationWrapper<A> {
+    pub fn call(self, scope: Scope<A::State>) -> RunningApplication {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let queue = self.receive_queue.clone();
 
         tokio::task::spawn(async move {
-            let out = if let Err(e) = self.asgi_callable.call(scope, self.receive, self.send).await {
+            let out = if let Err(e) = self.inner.call(scope, self.receive, self.send).await {
                 error!("Application error: {e}");
-                Err(e)
+                Err(Error::custom(e.to_string()))
             } else {
                 Ok(())
             };
-            queue.close();
             let _ = tx.send(out);
+            queue.close();
         });
 
-        (RunningApplication::new(self.send_queue, self.receive_queue), rx)
+        RunningApplication::new(rx, self.send_queue, self.receive_queue)
     }
 }
 
-#[derive(Clone)]
-pub struct ApplicationFactory<S: State, T: ASGIApplication<S>> {
-    asgi_callable: T,
-    phantom_data: PhantomData<S>,
-}
-
-impl<S: State, T: ASGIApplication<S>> ApplicationFactory<S, T> {
-    pub fn new(asgi_callable: T) -> Self {
-        Self {
-            asgi_callable,
-            phantom_data: PhantomData,
-        }
-    }
-
-    pub fn build(&self) -> Application<S, T> {
+impl<A: ASGIApplication> From<&A> for ApplicationWrapper<A> {
+    fn from(application: &A) -> Self {
         let (app_tx, server_rx) = async_channel::unbounded();
         let (server_tx, app_rx) = async_channel::unbounded();
-
+    
         let receive_closure = move || -> ReceiveFuture {
             let rxc = app_rx.clone();
             Box::new(Box::pin(async move {
@@ -100,7 +53,7 @@ impl<S: State, T: ASGIApplication<S>> ApplicationFactory<S, T> {
                 }
             }))
         };
-
+    
         let send_closure = move |message: ASGISendEvent| -> SendFuture {
             let txc = app_tx.clone();
             Box::new(Box::pin(async move {
@@ -110,14 +63,49 @@ impl<S: State, T: ASGIApplication<S>> ApplicationFactory<S, T> {
                 Ok(())
             }))
         };
-
-        Application::new(
-            self.asgi_callable.clone(),
+    
+        Self::new(
+            application.clone(),
             Arc::new(send_closure),
             Arc::new(receive_closure),
             server_tx,
             server_rx,
-            PhantomData,
         )
+    }
+}
+
+#[derive(Constructor)]
+pub(crate) struct RunningApplication {
+    result_handle: OneshotReceiver<Result<()>>,
+    send_queue: async_channel::Sender<ASGIReceiveEvent>,
+    receive_queue: async_channel::Receiver<ASGISendEvent>,
+}
+
+impl RunningApplication {
+    pub async fn close(&mut self) {
+        self.receive_queue.close();
+    }
+
+    pub async fn send_to(&mut self, message: ASGIReceiveEvent) -> Result<()> {
+        match self.result_handle.try_recv() {
+            Ok(_) => return Err(Error::custom("Attempted to send message to application that has finshed")),
+            Err(TryRecvError::Closed) => return Err(Error::custom("Attempted to send message to application that stopped")),
+            Err(TryRecvError::Empty) => {}
+        };
+
+        if let Err(e) = self.send_queue.send(message).await {
+            warn!("Failed to send message to app. {e}");
+            return Err(Error::custom(e.to_string()));
+        };
+        Ok(())
+    }
+
+    pub async fn receive_from(&mut self) -> Option<ASGISendEvent> {
+        match (self.result_handle.try_recv(), self.receive_queue.is_empty()) {
+            (Ok(_), true) | (Err(TryRecvError::Closed), true) => return None,
+            _ => {}
+        };
+
+        self.receive_queue.recv().await.ok()
     }
 }

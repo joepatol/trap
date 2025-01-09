@@ -1,9 +1,7 @@
 use std::io;
-use std::sync::Arc;
 
 use thiserror::Error;
-
-use crate::{ASGIReceiveEvent, ASGISendEvent};
+use asgispec::prelude::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -43,10 +41,21 @@ pub enum Error {
     Disconnect,
 
     #[error(transparent)]
-    SemaphoreAcquireError(#[from] tokio::sync::AcquireError),
-
-    #[error(transparent)]
     WebsocketError(#[from] fastwebsockets::WebSocketError),
+}
+
+pub enum UnexpectedShutdownSrc {
+    Application,
+    Server,
+}
+
+impl From<UnexpectedShutdownSrc> for String {
+    fn from(value: UnexpectedShutdownSrc) -> Self {
+        match value {
+            UnexpectedShutdownSrc::Application => String::from("Application"),
+            UnexpectedShutdownSrc::Server => String::from("Server"),
+        }
+    }
 }
 
 impl Error {
@@ -62,9 +71,9 @@ impl Error {
         Self::DisconnectedClient(String::from("Disconnected client"))
     }
 
-    pub fn unexpected_shutdown(src: &str, reason: String) -> Self {
+    pub fn unexpected_shutdown(src: UnexpectedShutdownSrc, reason: String) -> Self {
         Self::UnexpectedShutdown {
-            src: src.to_string(),
+            src: src.into(),
             reason,
         }
     }
@@ -73,11 +82,5 @@ impl Error {
 impl From<&str> for Error {
     fn from(value: &str) -> Self {
         Self::custom(value.to_string())
-    }
-}
-
-impl Into<Arc<dyn std::error::Error + Send + Sync>> for Error {
-    fn into(self) -> Arc<dyn std::error::Error + Send + Sync> {
-        Arc::new(self)
     }
 }

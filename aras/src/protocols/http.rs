@@ -1,34 +1,38 @@
 use std::fmt::Debug;
 
 use bytes::{Buf, Bytes};
+use derive_more::derive::Constructor;
 use futures::StreamExt;
 use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, StreamBody};
 use hyper::body::{Body, Frame};
 use hyper::Request;
 use asgispec::prelude::*;
+use asgispec::scope::HTTPScope;
 
-use crate::application::RunningApplication;
-use crate::error::{Error, Result};
-use crate::types::Response;
+use crate::application::{RunningApplication, ApplicationWrapper};
+use crate::error::{Error, Result, UnexpectedShutdownSrc as SRC};
+use crate::types::{ConnectionInfo, Response};
 
-pub async fn serve_http<B>(called_app: RunningApplication, request: Request<B>) -> Result<Response>
-where
-    B: Body + Send + 'static,
-    <B as hyper::body::Body>::Error: Debug,
-{
-    let result = tokio::try_join!(
-        stream_request_body(called_app.clone(), request.into_body()),
-        build_response(called_app.clone()),
-    );
+#[derive(Constructor)]
+pub(crate) struct HTTPHandler;
 
-    match result {
-        Ok((_, response)) => Ok(response),
-        Err(e) => Err(e),
-    }
+impl HTTPHandler {    
+    pub async fn serve<A, B>(self, application: A, request: Request<B>, conn: ConnectionInfo, state: A::State) -> Result<Response>
+    where
+        A: ASGIApplication + 'static,
+        B: Body + Send + 'static,
+        <B as hyper::body::Body>::Error: Debug,
+    {
+        let scope: Scope<A::State> = create_http_scope(&request, &conn, state);
+        let mut called_app = ApplicationWrapper::from(&application).call(scope);
+        
+        stream_request_body(&mut called_app, request.into_body()).await?;
+        build_response(called_app).await
+    } 
 }
 
-async fn stream_request_body<B>(asgi_app: RunningApplication, body: B) -> Result<()>
+async fn stream_request_body<B>(asgi_app: &mut RunningApplication, body: B) -> Result<()>
 where
     B: Body + Send + 'static,
     <B as hyper::body::Body>::Error: Debug,
@@ -77,7 +81,7 @@ async fn build_response(mut asgi_app: RunningApplication) -> Result<Response> {
         }
         None => {
             return Err(Error::unexpected_shutdown(
-                "Application",
+                SRC::Application,
                 "stopped without sending HTTP response".into(),
             ))
         }
@@ -102,7 +106,7 @@ async fn build_body_stream(mut asgi_app: RunningApplication) -> BoxBody<Bytes, E
                     yield Ok(msg.body)
                 },
                 Some(msg) => yield Err(Error::unexpected_asgi_message(Box::new(msg))),
-                None => yield Err(Error::unexpected_shutdown("Application", "stopped while sending HTTP response body".into())),
+                None => yield Err(Error::unexpected_shutdown(SRC::Application, "stopped while sending HTTP response body".into())),
             }
         }
     };
@@ -115,6 +119,27 @@ async fn build_body_stream(mut asgi_app: RunningApplication) -> BoxBody<Bytes, E
     BoxBody::new(StreamBody::new(byte_frame_stream))
 }
 
+fn create_http_scope<B: Body, S: State>(request: &Request<B>, connection_info: &ConnectionInfo, state: S) -> Scope<S> {
+    let scope = HTTPScope::new(
+        ASGIScope::default(),
+        format!("{:?}", request.version()),
+        request.method().as_str().to_owned(),
+        String::from("http"),
+        request.uri().path().to_owned(),
+        request.uri().to_string().as_bytes().to_vec(),
+        request.uri().query().unwrap_or("").as_bytes().to_vec(),
+        String::from(""), // Optional, default for now
+        request
+            .headers()
+            .into_iter()
+            .map(|(name, value)| (name.as_str().as_bytes().to_vec(), value.as_bytes().to_vec()))
+            .collect(),
+        Some((connection_info.client_ip.to_owned(), connection_info.client_port)),
+        Some((connection_info.server_ip.to_owned(), connection_info.server_port)),
+        Some(state),
+    );
+    scope.into()
+}
 // #[cfg(test)]
 // mod tests {
 //     use http::StatusCode;

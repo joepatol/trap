@@ -1,7 +1,6 @@
 use std::error::Error;
 use std::fmt::Display;
 use std::future::Future;
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 use crate::events::*;
@@ -10,7 +9,7 @@ use crate::scope::*;
 pub const ASGI_VERSION: &str = "3.0";
 pub const ASGI_SPEC_VERSION: &str = "2.4";
 
-pub type ASGIResult<T> = std::result::Result<T, Arc<dyn Error + Send + Sync>>;
+type ASGIResult<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 pub type SendFuture = Box<dyn Future<Output = ASGIResult<()>> + Unpin + Sync + Send>;
 pub type ReceiveFuture = Box<dyn Future<Output = ASGIReceiveEvent> + Unpin + Sync + Send>;
 pub type SendFn = Arc<dyn Fn(ASGISendEvent) -> SendFuture + Send + Sync>;
@@ -18,12 +17,15 @@ pub type ReceiveFn = Arc<dyn Fn() -> ReceiveFuture + Send + Sync>;
 
 pub trait State: Clone + Send + Sync + Display {}
 
-pub trait ASGIApplication<S: State>: Send + Sync + Clone {
-    fn call(&self, scope: Scope<S>, receive: ReceiveFn, send: SendFn) -> impl Future<Output = ASGIResult<()>> + Send;
+pub trait ASGIApplication: Send + Clone {
+    type State: State;
+    type Error: Error;
+    fn call(&self, scope: Scope<Self::State>, receive: ReceiveFn, send: SendFn) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
-pub trait ASGIServer<S: State, A: ASGIApplication<S>> {
-    fn serve(&self, application: A, state: S) -> impl Future<Output = ASGIResult<Sender<()>>> + Send;
+pub trait ASGIServer<A: ASGIApplication> {
+    type Output;
+    fn run(&self, application: A, state: A::State) -> impl Future<Output = Self::Output>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +42,24 @@ impl<S: State> std::fmt::Display for Scope<S> {
             Scope::Websocket(s) => write!(f, "{}", s),
             Scope::Lifespan(s) => write!(f, "{}", s),
         }
+    }
+}
+
+impl<S: State> From<HTTPScope<S>> for Scope<S> {
+    fn from(value: HTTPScope<S>) -> Self {
+        Self::HTTP(value)
+    }
+}
+
+impl<S: State> From<WebsocketScope<S>> for Scope<S> {
+    fn from(value: WebsocketScope<S>) -> Self {
+        Self::Websocket(value)
+    }
+}
+
+impl<S: State> From<LifespanScope<S>> for Scope<S> {
+    fn from(value: LifespanScope<S>) -> Self {
+        Self::Lifespan(value)
     }
 }
 

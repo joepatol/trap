@@ -1,7 +1,8 @@
 extern crate aras as aras_core;
 
+use asgispec::prelude::*;
+use aras_core::ArasServer;
 use tokio::runtime::Handle;
-use aras_core::ServerConfig;
 use log::{debug, error, info};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
@@ -80,7 +81,7 @@ fn serve(
 ) -> PyResult<()> {
     SimpleLogger::init(get_log_level_filter(log_level), Config::default())
         .map_err(|e| PyRuntimeError::new_err(format!("Failed to start logger. {}", e)))?;
-    let config = ServerConfig::new(keep_alive, max_concurrency, addr.into(), port, max_size_kb * 1000);
+    // let config = ServerConfig::new(keep_alive, max_concurrency, addr.into(), port, max_size_kb * 1000);
     let state = PyState::new(PyDict::new(py).unbind()); // State dictionary for the ASGI application
 
     // asyncio setup
@@ -99,10 +100,8 @@ fn serve(
                 info!("Started {} workers", Handle::current().metrics().num_workers());
 
                 let asgi_application = PyASGIAppWrapper::new(application, task_locals);
-
-                ::aras::serve(asgi_application, state, Some(config))
-                    .await
-                    .map_err(|e| PyRuntimeError::new_err(format!("Error running server; {}", e.to_string())))
+                let asgi_server = ArasServer::new(addr.into(), port, keep_alive);
+                asgi_server.run(asgi_application, state).await.map_err(|e| PyRuntimeError::new_err(format!("Error running server; {}", e.to_string())))
             })
         });
 

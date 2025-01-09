@@ -7,6 +7,7 @@ use pyo3::{
     types::{PyDict, PyMapping, PyString},
 };
 use pyo3_async_runtimes;
+use aras_core::ArasError;
 use asgispec::prelude::*;
 
 use super::convert;
@@ -235,35 +236,30 @@ impl PyASGIAppWrapper {
     }
 }
 
-impl ASGIApplication<PyState> for PyASGIAppWrapper {
-    async fn call(&self, scope: Scope<PyState>, receive: ReceiveFn, send: SendFn) -> ASGIResult<()> {
-        // TODO: remove unwraps
+impl ASGIApplication for PyASGIAppWrapper {
+    type State = PyState;
+    type Error = ArasError;
+
+    async fn call(&self, scope: Scope<Self::State>, receive: ReceiveFn, send: SendFn) -> Result<(), Self::Error> {
         let future = Python::with_gil(|py| {
             let maybe_awaitable = self.py_application.call1(
                 py,
                 (
-                    PyScope::new(scope).into_pyobject(py).unwrap(),
+                    PyScope::new(scope).into_pyobject(py)?,
                     PyReceive::new(receive),
                     PySend::new(send),
                 ),
             );
 
-            pyo3_async_runtimes::into_future_with_locals(
+            Ok(pyo3_async_runtimes::into_future_with_locals(
                 &self.task_locals,
-                maybe_awaitable.unwrap().bind(py).to_owned(),
-            ).unwrap()
-
-            // Ok(pyo3_async_runtimes::into_future_with_locals(
-            //     &self.task_locals,
-            //     maybe_awaitable?.bind(py).to_owned(),
-            // )?)
+                maybe_awaitable?.bind(py).to_owned(),
+            )?)
         });
         future
-            // TODO: make the conversions work
-            // .map_err(|e: PyErr| Error::custom(e.to_string()).into())?
+            .map_err(|e: PyErr| ArasError::custom(e.to_string()))?
             .await
-            .unwrap();
-            // .map_err(|e: PyErr| Error::custom(e.to_string()).into())?;
+            .map_err(|e: PyErr| ArasError::custom(e.to_string()))?;
 
         Ok(())
     }
