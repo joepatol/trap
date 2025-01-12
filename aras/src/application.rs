@@ -58,7 +58,7 @@ impl<A: ASGIApplication> From<&A> for ApplicationWrapper<A> {
             let txc = app_tx.clone();
             Box::new(Box::pin(async move {
                 if txc.send(message).await.is_err() {
-                    return Err(Error::disconnected_client().into());
+                    return Err(DisconnectClientError);
                 }
                 Ok(())
             }))

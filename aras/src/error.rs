@@ -11,9 +11,6 @@ pub enum Error {
     #[error("{0}")]
     Custom(String),
 
-    #[error("{0}")]
-    DisconnectedClient(String),
-
     #[error(transparent)]
     Hyper(#[from] hyper::Error),
 
@@ -65,10 +62,6 @@ impl Error {
 
     pub fn unexpected_asgi_message(msg: Box<dyn std::fmt::Debug + Send + Sync>) -> Self {
         Self::UnexpectedASGIMessage { msg }
-    }
-
-    pub fn disconnected_client() -> Self {
-        Self::DisconnectedClient(String::from("Disconnected client"))
     }
 
     pub fn unexpected_shutdown(src: UnexpectedShutdownSrc, reason: String) -> Self {

@@ -182,7 +182,7 @@ impl PySend {
         let converted_message: PyASGISendEvent = Python::with_gil(|py: Python| message.extract(py))?;
         (self.send)(converted_message.0)
             .await
-            // TODO: how to check erro type?
+            // TODO: how to check error type?
             // .map_err(|e| {
             //     match e {
             //         Error::DisconnectedClient(e) => PyIOError::new_err(format!("{e}")),

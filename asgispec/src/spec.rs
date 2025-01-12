@@ -9,8 +9,19 @@ use crate::scope::*;
 pub const ASGI_VERSION: &str = "3.0";
 pub const ASGI_SPEC_VERSION: &str = "2.4";
 
-type ASGIResult<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
-pub type SendFuture = Box<dyn Future<Output = ASGIResult<()>> + Unpin + Sync + Send>;
+#[derive(Debug)]
+pub struct DisconnectClientError;
+
+impl std::fmt::Display for DisconnectClientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Disconnected client")?;
+        Ok(())
+    }
+}
+
+impl std::error::Error for DisconnectClientError {}
+
+pub type SendFuture = Box<dyn Future<Output = Result<(), DisconnectClientError>> + Unpin + Sync + Send>;
 pub type ReceiveFuture = Box<dyn Future<Output = ASGIReceiveEvent> + Unpin + Sync + Send>;
 pub type SendFn = Arc<dyn Fn(ASGISendEvent) -> SendFuture + Send + Sync>;
 pub type ReceiveFn = Arc<dyn Fn() -> ReceiveFuture + Send + Sync>;
