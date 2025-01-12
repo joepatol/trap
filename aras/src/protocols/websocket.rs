@@ -49,7 +49,7 @@ impl WebsocketHandler {
             // If connection is accepted, merge the application response with hyper/fastwebsockets
             // proposed response. This way we can make use of their upgrade functionality
             // while maintaining required control by the application
-            return Ok(merge_responses(app_response, upgrade_response)?);
+            return merge_responses(app_response, upgrade_response);
         };
         Ok(app_response)
     }
@@ -107,13 +107,13 @@ async fn run_accepted_websocket(called_app: &mut RunningApplication, upgraded_io
 
         match iteration {
             WsIteration::ReceiveClient(frame) => {
-                if let false = do_server_iteration(frame?, called_app).await? {
+                if !do_server_iteration(frame?, called_app).await? {
                     break;
                 };
             }
             WsIteration::ReceiveApplication(msg) => {
                 let ws_clone = ws.clone();
-                if let false = do_app_iteration(msg, ws_clone).await? {
+                if !do_app_iteration(msg, ws_clone).await? {
                     break;
                 };
             }

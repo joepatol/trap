@@ -6,7 +6,6 @@ use pyo3::{
     prelude::*,
     types::{PyDict, PyMapping, PyString},
 };
-use pyo3_async_runtimes;
 use aras_core::ArasError;
 use asgispec::prelude::*;
 
@@ -65,17 +64,17 @@ impl PyState {
 
     fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let dict = self.state.lock().unwrap().clone_ref(py);
-        Ok(dict.bind(py).call_method0("__iter__")?)
+        dict.bind(py).call_method0("__iter__")
     }
 
     fn __str__<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let dict = self.state.lock().unwrap().clone_ref(py);
-        Ok(dict.bind(py).call_method0("__str__")?)
+        dict.bind(py).call_method0("__str__")
     }
 
     fn __repr__<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let dict = self.state.lock().unwrap().clone_ref(py);
-        Ok(dict.bind(py).call_method0("__repr__")?)
+        dict.bind(py).call_method0("__repr__")
     }
 }
 
@@ -84,7 +83,7 @@ pub struct PyASGISendEvent(ASGISendEvent);
 
 impl PyASGISendEvent {
     fn new(msg: ASGISendEvent) -> Self {
-        Self { 0: msg }
+        Self(msg)
     }
 }
 
@@ -116,7 +115,7 @@ pub struct PyASGIReceiveEvent(ASGIReceiveEvent);
 
 impl PyASGIReceiveEvent {
     fn new(msg: ASGIReceiveEvent) -> Self {
-        Self { 0: msg }
+        Self(msg)
     }
 }
 
@@ -144,7 +143,7 @@ struct PyScope(Scope<PyState>);
 
 impl PyScope {
     pub fn new(scope: Scope<PyState>) -> Self {
-        Self { 0: scope }
+        Self(scope)
     }
 }
 
@@ -216,7 +215,7 @@ impl PyReceive {
         Python::with_gil(|py| {
             PyASGIReceiveEvent::new(received)
                 .into_pyobject(py)
-                .and_then(|v| Ok(v.unbind()))
+                .map(|v| v.unbind())
         })
     }
 }
@@ -251,10 +250,10 @@ impl ASGIApplication for PyASGIAppWrapper {
                 ),
             );
 
-            Ok(pyo3_async_runtimes::into_future_with_locals(
+            pyo3_async_runtimes::into_future_with_locals(
                 &self.task_locals,
                 maybe_awaitable?.bind(py).to_owned(),
-            )?)
+            )
         });
         future
             .map_err(|e: PyErr| ArasError::custom(e.to_string()))?

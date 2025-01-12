@@ -57,7 +57,7 @@ impl<A: ASGIApplication> From<&A> for ApplicationWrapper<A> {
         let send_closure = move |message: ASGISendEvent| -> SendFuture {
             let txc = app_tx.clone();
             Box::new(Box::pin(async move {
-                if let Err(_) = txc.send(message).await {
+                if txc.send(message).await.is_err() {
                     return Err(Error::disconnected_client().into());
                 }
                 Ok(())

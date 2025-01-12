@@ -1,6 +1,6 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HTTPRequestEvent {
-    pub type_: String,
+    pub type_: String, // TODO: remove all type_ fields and just add them in display impl
     pub body: Vec<u8>,
     pub more_body: bool,
 }

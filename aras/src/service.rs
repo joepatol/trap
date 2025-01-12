@@ -1,36 +1,56 @@
+use std::fmt::Debug;
+
 use asgispec::prelude::*;
+use derive_more::derive::Constructor;
+use http_body::Body;
+use http::Request;
 use http_body_util::{BodyExt, Full};
 use log::error;
+use hyper::service::Service;
 use std::future::Future;
 
-use crate::error::Result;
+use crate::error::{Result, Error};
 use crate::protocols::{HTTPHandler, WebsocketHandler};
-use crate::types::*;
- 
-pub(crate) async fn aras_asgi_service<A: ASGIApplication + 'static>(
-    request: Request,
+use crate::types::{ServiceFuture, ConnectionInfo, Response};
+
+#[derive(Constructor)]
+pub(crate) struct ArasASGIService<A: ASGIApplication> {
     application: A,
-    conn_info: ConnectionInfo,
     state: A::State,
-) -> Result<Response> {
-    if is_websocket_request(&request) {
-        let handler = WebsocketHandler::new();
-        let fut = handler.serve(
-            application.clone(), 
-            request,
-            conn_info.clone(),
-            state.clone(),
-        );
-        handle_error(fut).await
-    } else {
-        let handler = HTTPHandler::new();
-        let fut = handler.serve(
-            application.clone(), 
-            request,
-            conn_info.clone(),
-            state.clone(),
-        );
-        handle_error(fut).await
+    conn: ConnectionInfo,
+}
+
+impl<A, B> Service<Request<B>> for ArasASGIService<A> 
+where
+    A: ASGIApplication + 'static,
+    B: Body + Send + 'static,
+    <B as Body>::Error: Debug + Send,
+    <B as Body>::Data: Send,
+{
+    type Error = Error;
+    type Response = Response;
+    type Future = ServiceFuture;
+
+    fn call(&self, request: Request<B>) -> Self::Future {
+        if is_websocket_request(&request) {
+            let handler = WebsocketHandler::new();
+            let fut = handler.serve(
+                self.application.clone(), 
+                request,
+                self.conn.clone(),
+                self.state.clone(),
+            );
+            Box::pin(handle_error(fut))
+        } else {
+            let handler = HTTPHandler::new();
+            let fut = handler.serve(
+                self.application.clone(), 
+                request,
+                self.conn.clone(),
+                self.state.clone(),
+            );
+            Box::pin(handle_error(fut))
+        }
     }
 }
 
@@ -53,7 +73,7 @@ async fn handle_error(fut: impl Future<Output = Result<Response>>) -> Result<Res
     }
 }
 
-fn is_websocket_request(value: &Request) -> bool {
+fn is_websocket_request<B>(value: &Request<B>) -> bool {
     if let Some(header_value) = value.headers().get("upgrade") {
         if header_value == "websocket" {
             return true;

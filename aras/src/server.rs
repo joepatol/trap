@@ -1,4 +1,5 @@
 use std::net::{IpAddr, SocketAddr};
+use std::time::Duration;
 
 use asgispec::prelude::*;
 use derive_more::derive::Constructor;
@@ -7,8 +8,8 @@ use hyper_util::rt::{TokioIo, TokioTimer};
 use log::{error, info};
 use tokio::net::TcpListener;
 
-use super::middlewares::Logger;
-use super::service::aras_asgi_service;
+use super::middlewares::*;
+use super::service::ArasASGIService;
 use super::error::{Error, Result, UnexpectedShutdownSrc as SRC};
 use super::protocols::LifespanHandler;
 use super::types::ConnectionInfo;
@@ -22,6 +23,12 @@ pub struct ArasServer {
     port: u16,
     /// Whether to use HTTP keep-alive
     keep_alive: bool,
+    /// Request timeout
+    timeout: Duration,
+    /// Max request body size
+    body_limit: usize,
+    /// Max number of in-flight requests
+    concurrency_limit: usize,
 }
 
 impl ArasServer {
@@ -46,12 +53,12 @@ impl ArasServer {
             let io = TokioIo::new(tcp);
             info!("Connecting new client {client}");
 
-            let svc = hyper::service::service_fn(move |req| {
-                aras_asgi_service(req, application.clone(), conn_info.clone(), state.clone())
-            });
             let svc = tower::ServiceBuilder::new()
-                .layer_fn(Logger::new)
-                .service(svc);
+                .layer(LogLayer::new())
+                .layer(ConcurrencyLimitLayer::new(self.concurrency_limit))
+                .layer(TimeoutLayer::new(self.timeout))
+                .layer(RequestBodyLimitLayer::new(self.body_limit))
+                .service(ArasASGIService::new(application.clone(), state.clone(), conn_info));
 
             tokio::task::spawn(async move {
                 if let Err(err) = http1::Builder::new()

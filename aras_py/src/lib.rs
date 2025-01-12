@@ -1,8 +1,10 @@
 extern crate aras as aras_core;
 
+use std::time::Duration;
+
 use asgispec::prelude::*;
 use aras_core::ArasServer;
-use tokio::runtime::Handle;
+use tokio::{runtime::Handle, sync::Semaphore};
 use log::{debug, error, info};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
@@ -77,11 +79,11 @@ fn serve(
     keep_alive: bool,
     log_level: &str,
     max_concurrency: Option<usize>,
-    max_size_kb: u64,
+    max_size_kb: usize,
 ) -> PyResult<()> {
     SimpleLogger::init(get_log_level_filter(log_level), Config::default())
         .map_err(|e| PyRuntimeError::new_err(format!("Failed to start logger. {}", e)))?;
-    // let config = ServerConfig::new(keep_alive, max_concurrency, addr.into(), port, max_size_kb * 1000);
+
     let state = PyState::new(PyDict::new(py).unbind()); // State dictionary for the ASGI application
 
     // asyncio setup
@@ -91,7 +93,7 @@ fn serve(
     asyncio.call_method1("set_event_loop", (&event_loop,))?;
 
     // TaskLocals stores a reference to the event loop, which can be used to run Python coroutines
-    let task_locals = pyo3_async_runtimes::TaskLocals::new(event_loop.clone().into()).copy_context(py)?;
+    let task_locals = pyo3_async_runtimes::TaskLocals::new(event_loop.clone()).copy_context(py)?;
 
     // Run Rust event loop with the server in a separate thread
     let server_task = std::thread::spawn(move || {
@@ -100,22 +102,22 @@ fn serve(
                 info!("Started {} workers", Handle::current().metrics().num_workers());
 
                 let asgi_application = PyASGIAppWrapper::new(application, task_locals);
-                let asgi_server = ArasServer::new(addr.into(), port, keep_alive);
-                asgi_server.run(asgi_application, state).await.map_err(|e| PyRuntimeError::new_err(format!("Error running server; {}", e.to_string())))
+                let asgi_server = ArasServer::new(
+                    addr.into(), port, keep_alive, Duration::from_secs(60), max_size_kb * 1000, max_concurrency.unwrap_or(Semaphore::MAX_PERMITS)
+                );
+                asgi_server.run(asgi_application, state).await.map_err(|e| PyRuntimeError::new_err(format!("Error running server; {}", e)))
             })
         });
 
         // When the server is done, stop Python's event loop as well
         debug!("Terminate Python event loop");
-        if let Err(e) = Python::with_gil(|py| terminate_python_event_loop(py, event_loop_clone)) {
-            return Err(e);
-        };
+        Python::with_gil(|py| terminate_python_event_loop(py, event_loop_clone))?;
 
         server_result
     });
 
     // Python's event loop runs in the main thread
-    if let Err(_) = run_python_event_loop(event_loop) {
+    if run_python_event_loop(event_loop).is_err() {
         return Err(PyRuntimeError::new_err(
             "Python event loop quit, cannot shutdown gracefully",
         ));

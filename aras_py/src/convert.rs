@@ -59,7 +59,7 @@ pub fn http_disconnect_event_into_py<'py>(py: Python<'py>, event: HTTPDisconnect
 fn asgi_scope_into_py<'py>(py: Python<'py>, scope: ASGIScope) -> PyResult<Bound<'py, PyDict>> {
     let asgi_dict = PyDict::new(py);
     asgi_dict.set_item("version", scope.version.into_pyobject(py)?)?;
-    asgi_dict.set_item("spec_version", String::from(scope.spec_version).into_pyobject(py)?)?;
+    asgi_dict.set_item("spec_version", scope.spec_version.into_pyobject(py)?)?;
     Ok(asgi_dict)
 }
 
@@ -67,7 +67,7 @@ pub fn http_scope_into_py<'py>(py: Python<'py>, scope: HTTPScope<PyState>) -> Py
     let python_result_dict = PyDict::new(py);
     python_result_dict.set_item("type", scope.type_.into_pyobject(py)?)?;
     python_result_dict.set_item("asgi", asgi_scope_into_py(py, scope.asgi)?)?;
-    python_result_dict.set_item("http_version", String::from(scope.http_version).into_pyobject(py)?)?;
+    python_result_dict.set_item("http_version", scope.http_version.into_pyobject(py)?)?;
     python_result_dict.set_item("method", scope.method.into_pyobject(py)?)?;
     python_result_dict.set_item("scheme", scope.scheme.into_pyobject(py)?)?;
     python_result_dict.set_item("path", scope.path.into_pyobject(py)?)?;
@@ -136,7 +136,7 @@ pub fn parse_websocket_send(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEvent
         .and_then(|inner| inner.extract::<String>())
         .ok();
 
-    if bytes == None && text == None {
+    if bytes.is_none() && text.is_none() {
         error!("Websocket send doesn't have a valid bytes or text field");
         return Err(PyErr::new::<PyRuntimeError, _>("Websocket send doesn't have a valid bytes or text field"))
     };
@@ -183,7 +183,7 @@ pub fn websocket_scope_into_py<'py>(py: Python<'py>, scope: WebsocketScope<PySta
     let python_result_dict = PyDict::new(py);
     python_result_dict.set_item("type", scope.type_.into_pyobject(py)?)?;
     python_result_dict.set_item("asgi", asgi_scope_into_py(py, scope.asgi)?)?;
-    python_result_dict.set_item("http_version", String::from(scope.http_version).into_pyobject(py)?)?;
+    python_result_dict.set_item("http_version", scope.http_version.into_pyobject(py)?)?;
     python_result_dict.set_item("scheme", scope.scheme.into_pyobject(py)?)?;
     python_result_dict.set_item("path", scope.path.into_pyobject(py)?)?;
     python_result_dict.set_item("raw_path", PyBytes::new(py, &scope.raw_path))?;
