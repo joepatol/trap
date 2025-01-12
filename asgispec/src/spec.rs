@@ -10,18 +10,18 @@ pub const ASGI_VERSION: &str = "3.0";
 pub const ASGI_SPEC_VERSION: &str = "2.4";
 
 #[derive(Debug)]
-pub struct DisconnectClientError;
+pub struct DisconnectedClient;
 
-impl std::fmt::Display for DisconnectClientError {
+impl std::fmt::Display for DisconnectedClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Disconnected client")?;
         Ok(())
     }
 }
 
-impl std::error::Error for DisconnectClientError {}
+impl std::error::Error for DisconnectedClient {}
 
-pub type SendFuture = Box<dyn Future<Output = Result<(), DisconnectClientError>> + Unpin + Sync + Send>;
+pub type SendFuture = Box<dyn Future<Output = Result<(), DisconnectedClient>> + Unpin + Sync + Send>;
 pub type ReceiveFuture = Box<dyn Future<Output = ASGIReceiveEvent> + Unpin + Sync + Send>;
 pub type SendFn = Arc<dyn Fn(ASGISendEvent) -> SendFuture + Send + Sync>;
 pub type ReceiveFn = Arc<dyn Fn() -> ReceiveFuture + Send + Sync>;
@@ -31,7 +31,12 @@ pub trait State: Clone + Send + Sync + Display {}
 pub trait ASGIApplication: Send + Clone {
     type State: State;
     type Error: Error;
-    fn call(&self, scope: Scope<Self::State>, receive: ReceiveFn, send: SendFn) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    fn call(
+        &self,
+        scope: Scope<Self::State>,
+        receive: ReceiveFn,
+        send: SendFn,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
 pub trait ASGIServer<A: ASGIApplication> {

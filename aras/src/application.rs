@@ -5,7 +5,7 @@ use derive_more::derive::Constructor;
 use log::{error, warn};
 use tokio::sync::oneshot::{error::TryRecvError, Receiver as OneshotReceiver};
 
-use crate::error::{Result, Error};
+use crate::error::{Error, Result};
 
 #[derive(Constructor)]
 pub(crate) struct ApplicationWrapper<A: ASGIApplication + 'static> {
@@ -40,7 +40,7 @@ impl<A: ASGIApplication> From<&A> for ApplicationWrapper<A> {
     fn from(application: &A) -> Self {
         let (app_tx, server_rx) = async_channel::unbounded();
         let (server_tx, app_rx) = async_channel::unbounded();
-    
+
         let receive_closure = move || -> ReceiveFuture {
             let rxc = app_rx.clone();
             Box::new(Box::pin(async move {
@@ -53,17 +53,17 @@ impl<A: ASGIApplication> From<&A> for ApplicationWrapper<A> {
                 }
             }))
         };
-    
+
         let send_closure = move |message: ASGISendEvent| -> SendFuture {
             let txc = app_tx.clone();
             Box::new(Box::pin(async move {
                 if txc.send(message).await.is_err() {
-                    return Err(DisconnectClientError);
+                    return Err(DisconnectedClient);
                 }
                 Ok(())
             }))
         };
-    
+
         Self::new(
             application.clone(),
             Arc::new(send_closure),
@@ -88,8 +88,14 @@ impl RunningApplication {
 
     pub async fn send_to(&mut self, message: ASGIReceiveEvent) -> Result<()> {
         match self.result_handle.try_recv() {
-            Ok(_) => return Err(Error::custom("Attempted to send message to application that has finshed")),
-            Err(TryRecvError::Closed) => return Err(Error::custom("Attempted to send message to application that stopped")),
+            Ok(_) => {
+                return Err(Error::custom(
+                    "Attempted to send message to application that has finshed",
+                ))
+            }
+            Err(TryRecvError::Closed) => {
+                return Err(Error::custom("Attempted to send message to application that stopped"))
+            }
             Err(TryRecvError::Empty) => {}
         };
 
