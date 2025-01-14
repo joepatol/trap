@@ -3,11 +3,13 @@ mod error;
 mod server;
 mod service;
 mod types;
-mod middlewares;
 mod protocols;
+mod middlewares;
 
 #[cfg(test)]
-mod test_assets;
+#[path ="../tests/utils/applications.rs"]
+mod applications;
 
 pub use error::{Error as ArasError, Result as ArasResult};
 pub use server::ArasServer;
+pub use service::ArasASGIService;

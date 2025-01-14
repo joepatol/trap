@@ -44,6 +44,6 @@ pub type ServiceFuture = Pin<Box<dyn Future<Output = Result<Response>> + Send>>;
 
 impl ResponseStatus for Response {
     fn status_string(&self) -> String {
-        self.status().as_str().to_owned()
+        format!("{} {}", self.status().as_str().to_owned(), self.status().canonical_reason().unwrap_or(""))
     }
 }

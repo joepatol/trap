@@ -6,13 +6,13 @@ use http::StatusCode;
 use tower::layer::Layer;
 use http::Request;
 use http_body::Body;
-use hyper::service::Service;
+use tower::Service;
 use http_body_util::{Full, BodyExt, Limited};
 
 use crate::error::Error;
 use crate::types::Response;
 
-#[derive(Constructor)]
+#[derive(Constructor, Clone)]
 pub struct RequestBodyLimit<S> {
     inner: S,
     limit: usize,
@@ -21,7 +21,7 @@ pub struct RequestBodyLimit<S> {
 impl<S, ReqBody> Service<Request<ReqBody>> for RequestBodyLimit<S> 
 where
     ReqBody: Body,
-    S: Service<Request<Limited<ReqBody>>>,
+    S: Service<Request<Limited<ReqBody>>, Error = Error>,
     <S as Service<Request<Limited<ReqBody>>>>::Future: Send + 'static,
     <S as Service<Request<Limited<ReqBody>>>>::Response: Into<Response>,
     <S as Service<Request<Limited<ReqBody>>>>::Error: Into<Error>,
@@ -30,7 +30,11 @@ where
     type Response = Response;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
-    fn call(&self, req: Request<ReqBody>) -> Self::Future {
+    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         let content_length = req
             .headers()
             .get(http::header::CONTENT_LENGTH)

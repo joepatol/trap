@@ -93,202 +93,97 @@ async fn shutdown_loop(mut application: RunningApplication) -> Result<()> {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use asgispec::prelude::*;
-//     use asgispec::scope::LifespanScope;
+#[cfg(test)]
+mod tests {
+    use asgispec::prelude::*;
+    use asgispec::scope::LifespanScope;
 
-//     use super::{LifespanHandler, StartedLifespanHandler};
-//     use crate::application::ApplicationFactory;
-//     use crate::error::Error;
+    use crate::applications::*;
 
-//     #[derive(Clone, Debug)]
-//     struct MockState;
-//     impl State for MockState {}
+    use super::ApplicationWrapper;
+    use super::{LifespanHandler, StartedLifespanHandler};
+    
+    pub fn build_lifespan_scope() -> Scope<MockState> {
+        Scope::Lifespan(LifespanScope::new(ASGIScope::default(), Some(MockState {})))
+    }
 
-//     #[derive(Clone, Debug)]
-//     struct LifespanApp;
+    #[tokio::test]
+    async fn test_lifespan_startup() {
+        let handler = LifespanHandler::new();
+        let result = handler.startup(LifespanApp {}, MockState {}).await;
+        assert!(result.is_ok());
+    }
 
-//     impl ASGIApplication<MockState> for LifespanApp {
-//         async fn call(&self, scope: Scope<MockState>, receive: ReceiveFn, send: SendFn) -> super::Result<()> {
-//             if let Scope::Lifespan(_) = scope {
-//                 loop {
-//                     match receive().await {
-//                         ASGIReceiveEvent::Startup(_) => {
-//                             send(ASGISendEvent::new_startup_complete()).await?;
-//                         }
-//                         ASGIReceiveEvent::Shutdown(_) => return send(ASGISendEvent::new_shutdown_complete()).await,
-//                         _ => return Err(Error::custom("Invalid message")),
-//                     }
-//                 }
-//             };
-//             Err(Error::custom("Invalid scope"))
-//         }
-//     }
+    #[tokio::test]
+    async fn test_lifespan_shutdown_ok_if_disabled() {
+        let app = LifespanApp {};
+        let running_app = ApplicationWrapper::from(&app)
+            .call(build_lifespan_scope());
+        let lifespan_handler = StartedLifespanHandler::new(running_app, false);
+        let result = lifespan_handler.shutdown().await;
+        assert!(result.is_ok());
+    }
 
-//     #[derive(Clone, Debug)]
-//     struct LifespanUnsupportedApp;
+    #[tokio::test]
+    async fn test_lifespan_shutdown() {
+        let running_app = ApplicationWrapper::from(LifespanApp {})
+            .call(build_lifespan_scope());
+        let lifespan_handler = StartedLifespanHandler::new(running_app, true);
+        let result = lifespan_handler.shutdown().await;
+        assert!(result.is_ok());
+    }
 
-//     impl ASGIApplication<MockState> for LifespanUnsupportedApp {
-//         async fn call(&self, scope: Scope<MockState>, receive: ReceiveFn, send: SendFn) -> super::Result<()> {
-//             if let Scope::Lifespan(_) = scope {
-//                 loop {
-//                     _ = receive().await;
-//                     // Send an unrelated message, to mimick the protocol not being supported
-//                     send(ASGISendEvent::new_http_response_body("oops".into(), false)).await?;
-//                 }
-//             };
-//             Err(Error::custom("Invalid scope"))
-//         }
-//     }
+    #[tokio::test]
+    async fn test_lifespan_disabled_if_protocol_unsupported() {
+        let handler = LifespanHandler::new();
+        let lifespan_handler = handler.startup(LifespanUnsupportedApp {}, MockState {}).await.unwrap();
+        assert!(lifespan_handler.enabled == false);
+    }
 
-//     #[derive(Clone, Debug)]
-//     struct ErrorApp;
+    #[tokio::test]
+    async fn test_error_on_startup() {
+        let handler = LifespanHandler::new();
+        let result = handler.startup(ErrorInLoopApp {}, MockState {}).await;
+        assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during startup"));
+    }
 
-//     impl ASGIApplication<MockState> for ErrorApp {
-//         async fn call(&self, _scope: Scope<MockState>, receive: ReceiveFn, _send: SendFn) -> super::Result<()> {
-//             _ = receive().await;
-//             Err(Error::custom("Test app raises error"))
-//         }
-//     }
+    #[tokio::test]
+    async fn test_startup_fails() {
+        let handler = LifespanHandler::new();
+        let result = handler.startup(LifespanFailedApp {}, MockState {}).await;
+        assert!(result.is_err_and(|e| e.to_string() == "test"));
+    }
 
-//     #[derive(Clone, Debug)]
-//     struct ErrorOnCallApp;
+    #[tokio::test]
+    async fn test_app_fails_when_called() {
+        let handler = LifespanHandler::new();
+        let result = handler.startup(ErrorOnCallApp {}, MockState {}).await;
+        assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during startup"));
+    }
 
-//     impl ASGIApplication<MockState> for ErrorOnCallApp {
-//         async fn call(&self, _scope: Scope<MockState>, _receive: ReceiveFn, _send: SendFn) -> super::Result<()> {
-//             Err(Error::custom("Immediate error"))
-//         }
-//     }
+    #[tokio::test]
+    async fn test_app_returns_early() {
+        let handler = LifespanHandler::new();
+        let result = handler.startup(ImmediateReturnApp {}, MockState {}).await;
+        assert!(result.is_err_and(|e| {
+            println!("{}", e.to_string());
+            true
+        }));
+    }
 
-//     #[derive(Clone, Debug)]
-//     struct ImmediateReturnApp;
+    #[tokio::test]
+    async fn test_shutdown_fails() {
+        let app = ApplicationWrapper::from(LifespanFailedApp {}).call(build_lifespan_scope());
+        let lifespan_handler = StartedLifespanHandler::new(app, true);
+        let result = lifespan_handler.shutdown().await;
+        assert!(result.is_err_and(|e| e.to_string() == "test"));
+    }
 
-//     impl ASGIApplication<MockState> for ImmediateReturnApp {
-//         async fn call(&self, _scope: Scope<MockState>, _receive: ReceiveFn, _send: SendFn) -> super::Result<()> {
-//             Ok(())
-//         }
-//     }
-
-//     #[derive(Clone, Debug)]
-//     struct LifespanFailedApp;
-
-//     impl ASGIApplication<MockState> for LifespanFailedApp {
-//         async fn call(&self, scope: Scope<MockState>, receive: ReceiveFn, send: SendFn) -> super::Result<()> {
-//             if let Scope::Lifespan(_) = scope {
-//                 loop {
-//                     match receive().await {
-//                         ASGIReceiveEvent::Startup(_) => {
-//                             send(ASGISendEvent::new_startup_failed("test".to_string())).await?;
-//                         }
-//                         ASGIReceiveEvent::Shutdown(_) => {
-//                             return send(ASGISendEvent::new_shutdown_failed("test".to_string())).await
-//                         }
-//                         _ => return Err(Error::custom("Invalid message")),
-//                     }
-//                 }
-//             };
-//             Err(Error::custom("Invalid scope"))
-//         }
-//     }
-
-//     fn create_scope() -> LifespanScope<MockState> {
-//         LifespanScope::new(ASGIScope::default(), Some(MockState {}))
-//     }
-
-//     #[tokio::test]
-//     async fn test_lifespan_startup() {
-//         let app = ApplicationFactory::new(LifespanApp {}).build();
-//         let lifespan_handler = LifespanHandler::new(app);
-//         let result = lifespan_handler.startup(MockState {}).await;
-//         assert!(result.is_ok());
-//     }
-
-//     #[tokio::test]
-//     async fn test_lifespan_shutdown_ok_if_disabled() {
-//         let app = ApplicationFactory::new(LifespanApp {})
-//             .build()
-//             .call(Scope::Lifespan(create_scope()))
-//             .0;
-//         let lifespan_handler = StartedLifespanHandler::new(app.clone(), false);
-//         let result = lifespan_handler.shutdown().await;
-//         assert!(result.is_ok());
-//     }
-
-//     #[tokio::test]
-//     async fn test_lifespan_shutdown() {
-//         let app = ApplicationFactory::new(LifespanApp {})
-//             .build()
-//             .call(Scope::Lifespan(create_scope()))
-//             .0;
-//         let lifespan_handler = StartedLifespanHandler::new(app.clone(), true);
-//         let result = lifespan_handler.shutdown().await;
-//         assert!(result.is_ok());
-//     }
-
-//     #[tokio::test]
-//     async fn test_lifespan_disabled_if_protocol_unsupported() {
-//         let app = ApplicationFactory::new(LifespanUnsupportedApp {}).build();
-//         let lifespan_handler = LifespanHandler::new(app);
-//         let lifespan_handler = lifespan_handler.startup(MockState {}).await.unwrap();
-//         assert!(lifespan_handler.enabled == false);
-//     }
-
-//     #[tokio::test]
-//     async fn test_error_on_startup() {
-//         let app = ApplicationFactory::new(ErrorApp {}).build();
-//         let lifespan_handler = LifespanHandler::new(app);
-//         let result = lifespan_handler.startup(MockState {}).await;
-//         assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during startup"));
-//     }
-
-//     #[tokio::test]
-//     async fn test_startup_fails() {
-//         let app = ApplicationFactory::new(LifespanFailedApp {}).build();
-//         let lifespan_handler = LifespanHandler::new(app);
-//         let result = lifespan_handler.startup(MockState {}).await;
-//         assert!(result.is_err_and(|e| e.to_string() == "test"));
-//     }
-
-//     #[tokio::test]
-//     async fn test_app_fails_when_called() {
-//         let app = ApplicationFactory::new(ErrorOnCallApp {}).build();
-//         let lifespan_handler = LifespanHandler::new(app);
-//         let result = lifespan_handler.startup(MockState {}).await;
-//         assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during startup"));
-//     }
-
-//     #[tokio::test]
-//     async fn test_app_returns_early() {
-//         let app = ApplicationFactory::new(ImmediateReturnApp {}).build();
-//         let lifespan_handler = LifespanHandler::new(app);
-//         let result = lifespan_handler.startup(MockState {}).await;
-//         assert!(result.is_err_and(|e| {
-//             println!("{}", e.to_string());
-//             true
-//         }));
-//     }
-
-//     #[tokio::test]
-//     async fn test_shutdown_fails() {
-//         let app = ApplicationFactory::new(LifespanFailedApp {})
-//             .build()
-//             .call(Scope::Lifespan(create_scope()))
-//             .0;
-//         let lifespan_handler = StartedLifespanHandler::new(app.clone(), true);
-//         let result = lifespan_handler.shutdown().await;
-//         println!("{result:?}");
-//         assert!(result.is_err_and(|e| e.to_string() == "test"));
-//     }
-
-//     #[tokio::test]
-//     async fn test_error_on_shutdown() {
-//         let app = ApplicationFactory::new(ErrorApp {})
-//             .build()
-//             .call(Scope::Lifespan(create_scope()))
-//             .0;
-//         let lifespan_handler = StartedLifespanHandler::new(app.clone(), true);
-//         let result = lifespan_handler.shutdown().await;
-//         assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during shutdown"));
-//     }
-// }
+    #[tokio::test]
+    async fn test_error_on_shutdown() {
+        let app = ApplicationWrapper::from(ErrorOnCallApp {}).call(build_lifespan_scope());
+        let lifespan_handler = StartedLifespanHandler::new(app, true);
+        let result = lifespan_handler.shutdown().await;
+        assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during shutdown"));
+    }
+}

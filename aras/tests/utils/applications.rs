@@ -1,11 +1,14 @@
+// ASGI Applications used for testing
+
 use asgispec::prelude::*;
 
+// Mocks
 #[derive(Debug)]
 pub struct TestError(String);
 
 impl std::fmt::Display for TestError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Test App failed: {}", self.0)?;
+        write!(f, "{}", self.0)?;
         Ok(())
     }
 }
@@ -27,6 +30,7 @@ impl std::fmt::Display for MockState {
     }
 }
 
+// Actual applications
 #[derive(Clone, Debug)]
 pub struct EchoApp {
     extra_body: Option<String>,
@@ -143,24 +147,8 @@ impl ASGIApplication for AssertSendErrorApp {
     
     async fn call(&self, _scope: Scope<Self::State>, receive: ReceiveFn, send: SendFn) -> Result<(), Self::Error> {
         loop {
-            match receive().await {
-                ASGIReceiveEvent::HTTPDisconnect(_) => {
-                    println!("received HTTPDisconnect");
-                    let send_result = send(ASGISendEvent::new_shutdown_complete()).await.map_err(|e| TestError { 0: e.to_string() });
-                    assert!(send_result.is_err_and(|e| {
-                            println!("{e}");
-                            true
-                        }
-                    ))
-                }
-                ASGIReceiveEvent::HTTPRequest(_) => {
-                    println!("received HTTPRequest");
-                    send(ASGISendEvent::new_http_response_start(200, Vec::new())).await.map_err(|e| TestError { 0: e.to_string() })?;
-                    send(ASGISendEvent::new_http_response_body(Vec::new(), false)).await.map_err(|e| TestError { 0: e.to_string() })?;
-                    continue
-                }
-                _ => return Err(TestError { 0: "Invalid message received".into() })
-            }
+            let _ = receive().await;
+            return send(ASGISendEvent::new_shutdown_complete()).await.map_err(|e| TestError { 0: e.to_string() })
         }
     }
 }
@@ -186,5 +174,72 @@ impl ASGIApplication for ErrorInDataStreamApp {
         let invalid = ASGISendEvent::new_startup_complete();
         send(invalid).await.map_err(|e| TestError { 0: e.to_string() })?;
         Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct LifespanApp;
+
+impl ASGIApplication for LifespanApp {
+    type Error = TestError;
+    type State = MockState;
+
+    async fn call(&self, scope: Scope<Self::State>, receive: ReceiveFn, send: SendFn) -> Result<(), Self::Error> {
+        if let Scope::Lifespan(_) = scope {
+            loop {
+                match receive().await {
+                    ASGIReceiveEvent::Startup(_) => {
+                        send(ASGISendEvent::new_startup_complete()).await.map_err(|e| TestError { 0: e.to_string() })?;
+                    }
+                    ASGIReceiveEvent::Shutdown(_) => return send(ASGISendEvent::new_shutdown_complete()).await.map_err(|e| TestError { 0: e.to_string() }),
+                    _ => return Err(TestError { 0: "Invalid message".into() }),
+                }
+            }
+        };
+        Err(TestError { 0: "Invalid message".into() })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct LifespanUnsupportedApp;
+
+impl ASGIApplication for LifespanUnsupportedApp {
+    type Error = TestError;
+    type State = MockState;
+
+    async fn call(&self, scope: Scope<Self::State>, receive: ReceiveFn, send: SendFn) -> Result<(), Self::Error> {
+        if let Scope::Lifespan(_) = scope {
+            loop {
+                _ = receive().await;
+                // Send an unrelated message, to mimick the protocol not being supported
+                send(ASGISendEvent::new_http_response_body("oops".into(), false)).await.map_err(|e| TestError { 0: e.to_string() })?;
+            }
+        };
+        Err(TestError { 0: "Invalid scope".into() })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct LifespanFailedApp;
+
+impl ASGIApplication for LifespanFailedApp {
+    type Error = TestError;
+    type State = MockState;
+
+    async fn call(&self, scope: Scope<Self::State>, receive: ReceiveFn, send: SendFn) -> Result<(), Self::Error> {
+        if let Scope::Lifespan(_) = scope {
+            loop {
+                match receive().await {
+                    ASGIReceiveEvent::Startup(_) => {
+                        send(ASGISendEvent::new_startup_failed("test".to_string())).await.map_err(|e| TestError { 0: e.to_string() })?;
+                    }
+                    ASGIReceiveEvent::Shutdown(_) => {
+                        return send(ASGISendEvent::new_shutdown_failed("test".to_string())).await.map_err(|e| TestError { 0: e.to_string() });
+                    }
+                    _ => return Err(TestError { 0: "Invalid scope".into() }),
+                }
+            }
+        };
+        Err(TestError { 0: "Invalid scope".into() })
     }
 }

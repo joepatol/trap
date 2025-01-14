@@ -5,6 +5,7 @@ use asgispec::prelude::*;
 use derive_more::derive::Constructor;
 use hyper::server::conn::http1;
 use hyper_util::rt::{TokioIo, TokioTimer};
+use hyper_util::service::TowerToHyperService;
 use log::{error, info};
 use tokio::net::TcpListener;
 
@@ -55,10 +56,11 @@ impl ArasServer {
 
             let svc = tower::ServiceBuilder::new()
                 .layer(LogLayer::new())
-                .layer(ConcurrencyLimitLayer::new(self.concurrency_limit))
-                .layer(TimeoutLayer::new(self.timeout))
+                .concurrency_limit(self.concurrency_limit)
+                .timeout(self.timeout)
                 .layer(RequestBodyLimitLayer::new(self.body_limit))
                 .service(ArasASGIService::new(application.clone(), state.clone(), conn_info));
+            let svc = TowerToHyperService::new(svc);
 
             tokio::task::spawn(async move {
                 if let Err(err) = http1::Builder::new()

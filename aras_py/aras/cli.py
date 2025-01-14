@@ -64,6 +64,7 @@ def serve(
     max_size_kb: int,
 ) -> None:
     sys.path.insert(0, os.getcwd())
+    os.environ["RUST_LOG"] = f"tower_http={log_level.lower()}"
     module_str, application_str = application.split(":")
     try:
         module = importlib.import_module(module_str)
@@ -77,7 +78,6 @@ def serve(
         loaded_app,
         addr=[int(i) for i in host.split(".")],
         port=port,
-        log_level=log_level,
         keep_alive=not no_keep_alive,
         max_concurrency=max_concurrency,
         max_size_kb=max_size_kb,

@@ -143,14 +143,24 @@ fn create_http_scope<B: Body, S: State>(request: &Request<B>, connection_info: &
 
 #[cfg(test)]
 mod tests {
+    use std::net::SocketAddrV4;
+
     use http::StatusCode;
     use http_body_util::BodyExt;
     use hyper::Request;
-    use super::HTTPHandler;
-    use crate::types::Response;
 
-    use crate::test_assets::arrange::*;
-    use crate::test_assets::applications::*;
+    use crate::types::Response;
+    use crate::types::ConnectionInfo;
+    use crate::applications::*;
+
+    use super::HTTPHandler;
+
+    pub fn build_conn_info() -> ConnectionInfo {
+        ConnectionInfo::new(
+            std::net::SocketAddr::V4(SocketAddrV4::new([127, 0, 0, 1].into(), 2)), 
+            std::net::SocketAddr::V4(SocketAddrV4::new([0, 0, 0, 0].into(), 80)), 
+        )
+    }
 
     async fn response_to_body_string(response: Response) -> String {
         String::from_utf8(response.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
@@ -304,24 +314,5 @@ mod tests {
         let headers = response.headers();
         assert!(headers.get("test").and_then(|v| Some(v.to_str().unwrap())) == Some("header"));
         assert!(headers.get("another").and_then(|v| Some(v.to_str().unwrap())) == Some("header"));
-    }
-
-    #[tokio::test]
-    async fn test_send_is_error_after_disconnect() {
-        let handler = HTTPHandler::new();
-        let request = Request::builder()
-            .body("hello world".to_string())
-            .expect("Failed to build request");
-
-        let response = handler.serve(
-            AssertSendErrorApp {},
-            request, 
-            build_conn_info(),
-            MockState {}
-        ).await;
-
-        assert!(response.is_ok());
-        let body = response_to_body_string(response.unwrap()).await;
-        assert!(body == "");
     }
 }

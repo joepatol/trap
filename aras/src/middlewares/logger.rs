@@ -4,7 +4,7 @@ use std::pin::Pin;
 
 use derive_more::derive::Constructor;
 use tower::layer::Layer;
-use hyper::service::Service;
+use tower::Service;
 use log::{info, error};
 
 use crate::types::{Request, ResponseStatus};
@@ -31,7 +31,11 @@ where
     type Response = S::Response;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
-    fn call(&self, req: Request) -> Self::Future {
+    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
         info!("processing request: {} {}", req.method(), req.uri().path());
         let fut = self.inner.call(req);
         let fut = async {

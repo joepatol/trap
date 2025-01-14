@@ -6,15 +6,15 @@ use http_body::Body;
 use http::Request;
 use http_body_util::{BodyExt, Full};
 use log::error;
-use hyper::service::Service;
+use tower::Service;
 use std::future::Future;
 
 use crate::error::{Result, Error};
 use crate::protocols::{HTTPHandler, WebsocketHandler};
 use crate::types::{ServiceFuture, ConnectionInfo, Response};
 
-#[derive(Constructor)]
-pub(crate) struct ArasASGIService<A: ASGIApplication> {
+#[derive(Constructor, Clone)]
+pub struct ArasASGIService<A: ASGIApplication> {
     application: A,
     state: A::State,
     conn: ConnectionInfo,
@@ -31,7 +31,11 @@ where
     type Response = Response;
     type Future = ServiceFuture;
 
-    fn call(&self, request: Request<B>) -> Self::Future {
+    fn poll_ready(&mut self, _: &mut std::task::Context<'_>) -> std::task::Poll<std::result::Result<(), Self::Error>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, request: Request<B>) -> Self::Future {
         if is_websocket_request(&request) {
             let handler = WebsocketHandler::new();
             let fut = handler.serve(

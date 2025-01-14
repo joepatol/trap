@@ -184,7 +184,7 @@ async fn do_server_iteration(frame: Frame<'_>, asgi_app: &mut RunningApplication
             asgi_app.send_to(ASGIReceiveEvent::new_websocket_receive(Some(frame_bytes), None)).await?;
             Ok(true)
         }
-        _ => Ok(true),
+        _ => Ok(true)
     }
 }
 

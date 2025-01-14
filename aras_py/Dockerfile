@@ -16,7 +16,7 @@ COPY --from=builder /usr/src/myapp/target/wheels/aras-0.2.0-cp311-cp311-manylinu
 
 WORKDIR /app
 
-COPY ./test_application/ .
+COPY ./tests/utils/test_application/ .
 
 RUN pip install aras/aras-0.2.0-cp311-cp311-manylinux_2_34_x86_64.whl
 RUN pip install uvloop
