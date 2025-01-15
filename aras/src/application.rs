@@ -45,8 +45,8 @@ impl<A: ASGIApplication> From<A> for ApplicationWrapper<A> {
 
 impl<A: ASGIApplication> From<&A> for ApplicationWrapper<A> {
     fn from(application: &A) -> Self {
-        let (app_tx, server_rx) = channel::unbounded();
-        let (server_tx, app_rx) = channel::unbounded();
+        let (app_tx, server_rx) = channel::bounded(32);
+        let (server_tx, app_rx) = channel::bounded(32);
 
         let receive_closure = move || -> ReceiveFuture {
             let rxc = app_rx.clone();
@@ -106,7 +106,7 @@ impl RunningApplication {
         };
 
         println!("Sending msg to app");
-        if let Err(e) = self.send_queue.try_send(message) {
+        if let Err(e) = self.send_queue.send(message).await {
             warn!("Failed to send message to app. {e}");
             return Err(Error::custom(e.to_string()));
         };

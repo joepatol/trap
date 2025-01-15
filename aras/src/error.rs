@@ -2,6 +2,7 @@ use std::io;
 
 use thiserror::Error;
 use asgispec::prelude::*;
+use async_channel::SendError;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -29,10 +30,10 @@ pub enum Error {
     },
 
     #[error(transparent)]
-    ChannelReceiveError(#[from] async_channel::SendError<ASGIReceiveEvent>),
+    ChannelReceiveError(#[from] SendError<ASGIReceiveEvent>),
 
     #[error(transparent)]
-    ChannelSendError(#[from] async_channel::SendError<ASGISendEvent>),
+    ChannelSendError(#[from] SendError<ASGISendEvent>),
 
     #[error("Disconnect")]
     Disconnect,
