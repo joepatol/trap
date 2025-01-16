@@ -1,6 +1,5 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HTTPRequestEvent {
-    pub type_: String, // TODO: remove all type_ fields and just add them in display impl
     pub body: Vec<u8>,
     pub more_body: bool,
 }
@@ -8,7 +7,6 @@ pub struct HTTPRequestEvent {
 impl HTTPRequestEvent {
     pub fn new(body: Vec<u8>, more_body: bool) -> Self {
         Self {
-            type_: "http.request".into(),
             body,
             more_body,
         }
@@ -17,7 +15,7 @@ impl HTTPRequestEvent {
 
 impl std::fmt::Display for HTTPRequestEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: {}", self.type_)?;
+        writeln!(f, "type: http.request")?;
         writeln!(f, "body:")?;
         writeln!(f, "   {}", String::from_utf8_lossy(&self.body))?;
         writeln!(f, "more_body: {}", self.more_body)?;
@@ -27,7 +25,6 @@ impl std::fmt::Display for HTTPRequestEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HTTPResponseStartEvent {
-    pub type_: String,
     pub status: u16,
     pub headers: Vec<(Vec<u8>, Vec<u8>)>,
 }
@@ -35,7 +32,6 @@ pub struct HTTPResponseStartEvent {
 impl HTTPResponseStartEvent {
     pub fn new(status: u16, headers: Vec<(Vec<u8>, Vec<u8>)>) -> Self {
         Self {
-            type_: "http.response.start".into(),
             status,
             headers,
         }
@@ -44,7 +40,7 @@ impl HTTPResponseStartEvent {
 
 impl std::fmt::Display for HTTPResponseStartEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: {}", self.type_)?;
+        writeln!(f, "type: http.response.start")?;
         writeln!(f, "status: {}", self.status)?;
         writeln!(f, "headers:")?;
         for (name, value) in &self.headers {
@@ -56,7 +52,6 @@ impl std::fmt::Display for HTTPResponseStartEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HTTPResonseBodyEvent {
-    pub type_: String,
     pub body: Vec<u8>,
     pub more_body: bool,
 }
@@ -64,7 +59,6 @@ pub struct HTTPResonseBodyEvent {
 impl HTTPResonseBodyEvent {
     pub fn new(body: Vec<u8>, more_body: bool) -> Self {
         Self {
-            type_: "http.response.body".into(),
             body,
             more_body,
         }
@@ -73,7 +67,7 @@ impl HTTPResonseBodyEvent {
 
 impl std::fmt::Display for HTTPResonseBodyEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: {}", self.type_)?;
+        writeln!(f, "type: http.response.body")?;
         writeln!(f, "body:")?;
         writeln!(f, "   {}", String::from_utf8_lossy(&self.body))?;
         writeln!(f, "more_body: {}", self.more_body)?;
@@ -82,19 +76,17 @@ impl std::fmt::Display for HTTPResonseBodyEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HTTPDisconnectEvent {
-    pub type_: String,
-}
+pub struct HTTPDisconnectEvent;
 
 impl HTTPDisconnectEvent {
     pub fn new() -> Self {
-        Self { type_: "http.disconnect".into() }
+        Self
     }
 }
 
 impl std::fmt::Display for HTTPDisconnectEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: {}", self.type_)?;
+        writeln!(f, "type: http.disconnect")?;
         Ok(())
     }
 }

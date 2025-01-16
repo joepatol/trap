@@ -44,15 +44,15 @@ pub fn parse_shutdown_failed(py_map: &Bound<PyMapping>) -> ASGISendEvent {
 
 pub fn http_request_event_into_py<'py>(py: Python<'py>, event: HTTPRequestEvent) -> PyResult<Bound<'py, PyDict>> {
     let python_result_dict = PyDict::new(py);
-    python_result_dict.set_item("type", event.type_.into_pyobject(py)?)?;
+    python_result_dict.set_item("type", "http.request".into_pyobject(py)?)?;
     python_result_dict.set_item("body", PyBytes::new(py, event.body.as_slice()))?;
     python_result_dict.set_item("more_body", event.more_body.into_pyobject(py)?)?;
     Ok(python_result_dict)
 }
 
-pub fn http_disconnect_event_into_py<'py>(py: Python<'py>, event: HTTPDisconnectEvent) -> PyResult<Bound<'py, PyDict>> {
+pub fn http_disconnect_event_into_py<'py>(py: Python<'py>, _event: HTTPDisconnectEvent) -> PyResult<Bound<'py, PyDict>> {
     let python_result_dict = PyDict::new(py);
-    python_result_dict.set_item("type", event.type_.into_pyobject(py)?)?;
+    python_result_dict.set_item("type", "http.disconnect".into_pyobject(py)?)?;
     Ok(python_result_dict)
 }
 
@@ -102,15 +102,15 @@ pub fn lifespan_scope_into_py<'py>(py: Python<'py>, scope: LifespanScope<PyState
     Ok(python_result_dict)
 }
 
-pub fn lifespan_startup_into_py<'py>(py: Python<'py>, event: LifespanStartupEvent) -> PyResult<Bound<'py, PyDict>> {
+pub fn lifespan_startup_into_py<'py>(py: Python<'py>, _event: LifespanStartupEvent) -> PyResult<Bound<'py, PyDict>> {
     let python_result_dict = PyDict::new(py);
-    python_result_dict.set_item("type", event.type_.into_pyobject(py)?)?;
+    python_result_dict.set_item("type", "lifespan.startup".into_pyobject(py)?)?;
     Ok(python_result_dict)
 }
 
-pub fn lifespan_shutdown_into_py<'py>(py: Python<'py>, event: LifespanShutdownEvent) -> PyResult<Bound<'py, PyDict>> {
+pub fn lifespan_shutdown_into_py<'py>(py: Python<'py>, _event: LifespanShutdownEvent) -> PyResult<Bound<'py, PyDict>> {
     let python_result_dict = PyDict::new(py);
-    python_result_dict.set_item("type", event.type_.into_pyobject(py)?)?;
+    python_result_dict.set_item("type", "lifespan.shutdown".into_pyobject(py)?)?;
     Ok(python_result_dict)
 }
 
@@ -159,7 +159,7 @@ pub fn parse_websocket_close(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEven
 
 pub fn websocket_receive_into_py<'py>(py: Python<'py>, event: WebsocketReceiveEvent) -> PyResult<Bound<'py, PyDict>> {
     let python_result_dict = PyDict::new(py);
-    python_result_dict.set_item("type", event.type_.into_pyobject(py)?)?;
+    python_result_dict.set_item("type", "websocket.receive".into_pyobject(py)?)?;
     match event.bytes {
         Some(v) => python_result_dict.set_item("bytes", PyBytes::new(py, &v)),
         None => python_result_dict.set_item("bytes", PyNone::get(py)),
@@ -173,7 +173,7 @@ pub fn websocket_receive_into_py<'py>(py: Python<'py>, event: WebsocketReceiveEv
 
 pub fn websocket_disconnect_into_py<'py>(py: Python<'py>, event: WebsocketDisconnectEvent) -> PyResult<Bound<'py, PyDict>> {
     let python_result_dict = PyDict::new(py);
-    python_result_dict.set_item("type", event.type_.into_pyobject(py)?)?;
+    python_result_dict.set_item("type", "websocket.disconnect".into_pyobject(py)?)?;
     python_result_dict.set_item("code", event.code.into_pyobject(py)?)?;
     python_result_dict.set_item("reason", String::new().into_pyobject(py)?)?;
     Ok(python_result_dict)
@@ -215,8 +215,8 @@ pub fn websocket_scope_into_py<'py>(py: Python<'py>, scope: WebsocketScope<PySta
     Ok(python_result_dict)
 }
 
-pub fn websocket_connect_into_py<'py>(py: Python<'py>, event: WebsocketConnectEvent) -> PyResult<Bound<'py, PyDict>> {
+pub fn websocket_connect_into_py<'py>(py: Python<'py>, _event: WebsocketConnectEvent) -> PyResult<Bound<'py, PyDict>> {
     let python_result_dict = PyDict::new(py);
-    python_result_dict.set_item("type", event.type_.into_pyobject(py)?)?;
+    python_result_dict.set_item("type", "websocket.connect".into_pyobject(py)?)?;
     Ok(python_result_dict)
 }

@@ -10,7 +10,7 @@ use hyper::Request;
 use asgispec::prelude::*;
 use asgispec::scope::HTTPScope;
 
-use crate::application::{RunningApplication, ApplicationWrapper};
+use crate::application::{CalledApplication, ApplicationWrapper};
 use crate::error::{Error, Result, UnexpectedShutdownSrc as SRC};
 use crate::types::{ConnectionInfo, Response};
 
@@ -32,7 +32,7 @@ impl HTTPHandler {
     } 
 }
 
-async fn stream_request_body<B>(asgi_app: &mut RunningApplication, body: B) -> Result<()>
+async fn stream_request_body<B>(asgi_app: &mut CalledApplication, body: B) -> Result<()>
 where
     B: Body + Send + 'static,
     <B as hyper::body::Body>::Error: Debug,
@@ -68,7 +68,7 @@ where
     Ok(())
 }
 
-async fn build_response(mut asgi_app: RunningApplication) -> Result<Response> {
+async fn build_response(mut asgi_app: CalledApplication) -> Result<Response> {
     let mut builder = hyper::Response::builder();
 
     let body = match asgi_app.receive_from().await {
@@ -91,12 +91,14 @@ async fn build_response(mut asgi_app: RunningApplication) -> Result<Response> {
     Ok(builder.body(body)?)
 }
 
-async fn build_body_stream(mut asgi_app: RunningApplication) -> BoxBody<Bytes, Error> {
+async fn build_body_stream(mut asgi_app: CalledApplication) -> BoxBody<Bytes, Error> {
     let stream = async_stream::stream! {
         let mut more_data = true;
         loop {
             if !more_data {
-                asgi_app.send_to(ASGIReceiveEvent::new_http_disconnect()).await?;
+                // If sending the disconnect event fails, it's because the application
+                // cannot receive any more messages. We don't care...
+                _ = asgi_app.send_to(ASGIReceiveEvent::new_http_disconnect()).await;
                 asgi_app.close().await;
                 break
             }

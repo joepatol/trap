@@ -16,6 +16,7 @@ pyo3-async-runtimes = { version = "0.23", features = ["attributes", "tokio-runti
 log = "0.4.22"
 simplelog = "^0.12.0"
 tokio = { version = "1.13", features = ["full"] }
+ctrlc = "3.4.5"
 
 [package.metadata.maturin]
 python-source = "aras"

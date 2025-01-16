@@ -1,6 +1,8 @@
-use std::sync::Arc;
 use std::fmt::Debug;
+use std::sync::Arc;
 
+use asgispec::prelude::*;
+use asgispec::scope::WebsocketScope;
 use bytes::Bytes;
 use bytes::BytesMut;
 use derive_more::derive::Constructor;
@@ -14,19 +16,23 @@ use hyper::Request;
 use hyper_util::rt::TokioIo;
 use log::error;
 use tokio::sync::Mutex;
-use asgispec::prelude::*;
-use asgispec::scope::WebsocketScope;
 
-use crate::application::{ApplicationWrapper, RunningApplication};
+use crate::application::{ApplicationWrapper, CalledApplication};
 use crate::error::Result;
-use crate::types::{Response, ConnectionInfo};
 use crate::error::{Error, UnexpectedShutdownSrc as SRC};
+use crate::types::{ConnectionInfo, Response};
 
 #[derive(Constructor)]
 pub(crate) struct WebsocketHandler;
 
 impl WebsocketHandler {
-    pub async fn serve<A, B>(self, application: A, mut request: Request<B>, conn: ConnectionInfo, state: A::State) -> Result<Response> 
+    pub async fn serve<A, B>(
+        self,
+        application: A,
+        mut request: Request<B>,
+        conn: ConnectionInfo,
+        state: A::State,
+    ) -> Result<Response>
     where
         A: ASGIApplication + 'static,
         B: Body + Send + 'static,
@@ -36,7 +42,7 @@ impl WebsocketHandler {
         let mut called_app = ApplicationWrapper::from(&application).call(scope);
 
         let (accepted, app_response) = accept_websocket_connection(&mut called_app).await?;
-    
+
         if accepted {
             let (upgrade_response, fut) = upgrade::upgrade(&mut request)?;
             tokio::task::spawn(async move {
@@ -55,7 +61,7 @@ impl WebsocketHandler {
     }
 }
 
-async fn accept_websocket_connection(called_app: &mut RunningApplication) -> Result<(bool, Response)> {
+async fn accept_websocket_connection(called_app: &mut CalledApplication) -> Result<(bool, Response)> {
     let mut builder = hyper::Response::builder();
     called_app.send_to(ASGIReceiveEvent::new_websocket_connect()).await?;
 
@@ -91,7 +97,7 @@ enum WsIteration<'a> {
     ReceiveApplication(Option<ASGISendEvent>),
 }
 
-async fn run_accepted_websocket(called_app: &mut RunningApplication, upgraded_io: UpgradeFut) -> Result<()> {
+async fn run_accepted_websocket(called_app: &mut CalledApplication, upgraded_io: UpgradeFut) -> Result<()> {
     let ws = Arc::new(Mutex::new(FragmentCollector::new(upgraded_io.await?)));
 
     loop {
@@ -156,35 +162,42 @@ async fn do_app_iteration(
             let payload = Payload::Owned(String::from("Internal server error").into_bytes());
             let frame = Frame::new(true, OpCode::Close, None, payload);
             ws.lock().await.write_frame(frame).await?;
-            Err(Error::unexpected_shutdown(SRC::Application, "shutdown while open websocket connection".into()))
+            Err(Error::unexpected_shutdown(
+                SRC::Application,
+                "shutdown while open websocket connection".into(),
+            ))
         }
         Some(msg) => {
             let payload = Payload::Owned(String::from("Internal server error").into_bytes());
             let frame = Frame::new(true, OpCode::Close, None, payload);
             ws.lock().await.write_frame(frame).await?;
-            Err(Error::unexpected_asgi_message(Box::new(format!("Received invalid ASGI message in websocket loop. Got: {msg:?}"))))
+            Err(Error::unexpected_asgi_message(Box::new(format!(
+                "Received invalid ASGI message in websocket loop. Got: {msg:?}"
+            ))))
         }
     }
 }
 
-async fn do_server_iteration(frame: Frame<'_>, asgi_app: &mut RunningApplication) -> Result<bool> {
+async fn do_server_iteration(frame: Frame<'_>, asgi_app: &mut CalledApplication) -> Result<bool> {
     let frame_bytes = frame.payload.to_vec();
 
     match frame.opcode {
-        OpCode::Close => {
-            Ok(false)
-        },
+        OpCode::Close => Ok(false),
         OpCode::Text => {
             // Text is guaranteed to be utf-8 by fastwebsockets
             let text = String::from_utf8(frame_bytes).unwrap();
-            asgi_app.send_to(ASGIReceiveEvent::new_websocket_receive(None, Some(text))).await?;
+            asgi_app
+                .send_to(ASGIReceiveEvent::new_websocket_receive(None, Some(text)))
+                .await?;
             Ok(true)
         }
         OpCode::Binary => {
-            asgi_app.send_to(ASGIReceiveEvent::new_websocket_receive(Some(frame_bytes), None)).await?;
+            asgi_app
+                .send_to(ASGIReceiveEvent::new_websocket_receive(Some(frame_bytes), None))
+                .await?;
             Ok(true)
         }
-        _ => Ok(true)
+        _ => Ok(true),
     }
 }
 
@@ -209,8 +222,7 @@ fn create_ws_scope<B: Body, S: State>(request: &Request<B>, connection_info: &Co
         .into_iter()
         .filter(|(k, _)| k.as_str().to_lowercase() == "sec-websocket-protocol")
         .map(|(_, v)| {
-            // TODO: is default here desirable?
-            let mut txt = String::from_utf8(v.as_bytes().to_vec()).unwrap_or("".to_string());
+            let mut txt = String::from_utf8_lossy(&v.as_bytes().to_vec()).to_string();
             txt.retain(|c| !c.is_whitespace());
             txt
         })
@@ -225,7 +237,7 @@ fn create_ws_scope<B: Body, S: State>(request: &Request<B>, connection_info: &Co
         request.uri().path().to_owned(),
         request.uri().to_string().as_bytes().to_vec(),
         request.uri().query().unwrap_or("").as_bytes().to_vec(),
-        String::from(""), // Optional, default for now
+        String::from(""), // TODO: Optional, default for now
         request
             .headers()
             .into_iter()

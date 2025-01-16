@@ -1,24 +1,21 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WebsocketConnectEvent {
-    pub type_: String,
-}
+pub struct WebsocketConnectEvent;
 
 impl WebsocketConnectEvent {
     pub fn new() -> Self {
-        Self { type_: "websocket.connect".into() }
+        Self
     }
 }
 
 impl std::fmt::Display for WebsocketConnectEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: {}", self.type_)?;
+        writeln!(f, "type: websocket.connect")?;
         Ok(())
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketAcceptEvent {
-    pub type_: String,
     pub subprotocol: Option<String>,
     pub headers: Vec<(Vec<u8>, Vec<u8>)>,
 }
@@ -28,13 +25,13 @@ impl WebsocketAcceptEvent {
         subprotocol: Option<String>,
         headers: Vec<(Vec<u8>, Vec<u8>)>,
     ) -> Self {
-        Self { type_:  "websocket.accept".into(), subprotocol, headers }
+        Self { subprotocol, headers }
     }
 }
 
 impl std::fmt::Display for WebsocketAcceptEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: {}", self.type_)?;
+        writeln!(f, "type: websocket.accept")?;
         if self.subprotocol.is_some() {
             writeln!(f, "subprotocol: {}", self.subprotocol.clone().unwrap())?;
         } else {
@@ -50,7 +47,6 @@ impl std::fmt::Display for WebsocketAcceptEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketReceiveEvent {
-    pub type_: String,
     pub bytes: Option<Vec<u8>>,
     pub text: Option<String>,
 }
@@ -60,14 +56,13 @@ impl WebsocketReceiveEvent {
         bytes: Option<Vec<u8>>,
         text: Option<String>,
     ) -> Self {
-        // TODO: at least one of bytes or text should be present
-        Self { type_: "websocket.receive".into(), bytes, text }
+        Self { bytes, text }
     } 
 }
 
 impl std::fmt::Display for WebsocketReceiveEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: {}", self.type_)?;
+        writeln!(f, "type: websocket.receive")?;
         if self.bytes.is_some() {
             writeln!(f, "bytes: {}", String::from_utf8_lossy(&self.bytes.clone().unwrap()))?;
         } else {
@@ -84,7 +79,6 @@ impl std::fmt::Display for WebsocketReceiveEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketSendEvent {
-    pub type_: String,
     pub bytes: Option<Vec<u8>>,
     pub text: Option<String>,
 }
@@ -94,14 +88,13 @@ impl WebsocketSendEvent {
         bytes: Option<Vec<u8>>,
         text: Option<String>,
     ) -> Self {
-        // TODO: at least one of bytes or text should be present
-        Self { type_: "websocket.send".into(), bytes, text }
+        Self { bytes, text }
     } 
 }
 
 impl std::fmt::Display for WebsocketSendEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: {}", self.type_)?;
+        writeln!(f, "type: websocket.send")?;
         if self.bytes.is_some() {
             writeln!(f, "bytes: {}", String::from_utf8_lossy(&self.bytes.clone().unwrap()))?;
         } else {
@@ -118,25 +111,24 @@ impl std::fmt::Display for WebsocketSendEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketDisconnectEvent {
-    pub type_: String,
     pub code: usize,
 }
 
 impl WebsocketDisconnectEvent {
     pub fn new(code: usize) -> Self {
-        Self { type_: "websocket.disconnect".into(), code }
+        Self { code }
     }
 }
 
 impl Default for WebsocketDisconnectEvent {
     fn default() -> Self {
-        Self { type_: "websocket.disconnect".into(), code: 1005 }
+        Self { code: 1005 }
     }
 }
 
 impl std::fmt::Display for WebsocketDisconnectEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: {}", self.type_)?;
+        writeln!(f, "type: websocket.disconnect")?;
         writeln!(f, "code: {}", self.code)?;
         Ok(())
     }
@@ -144,20 +136,19 @@ impl std::fmt::Display for WebsocketDisconnectEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketCloseEvent {
-    pub type_: String,
     pub code: usize,
     pub reason: String,
 }
 
 impl WebsocketCloseEvent {
     pub fn new(code: Option<usize>, reason: String) -> Self {
-        Self { type_: "websocket.close".into(), code: code.unwrap_or(1000), reason }
+        Self { code: code.unwrap_or(1000), reason }
     }
 }
 
 impl std::fmt::Display for WebsocketCloseEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: {}", self.type_)?;
+        writeln!(f, "type: websocket.close")?;
         writeln!(f, "code: {}", self.code)?;
         writeln!(f, "reason: {}", self.reason)?;
         Ok(())

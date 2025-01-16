@@ -15,8 +15,8 @@ use super::error::{Error, Result, UnexpectedShutdownSrc as SRC};
 use super::protocols::LifespanHandler;
 use super::types::ConnectionInfo;
 
-/// Generic server that serves some `hyper::service::Service`.
-#[derive(Constructor)]
+/// The Aras server implementation
+#[derive(Constructor, Clone)]
 pub struct ArasServer {
     /// Host address
     addr: IpAddr,
@@ -89,8 +89,8 @@ where
 
     async fn run(&self, application: A, state: A::State) -> Self::Output {
         let lifespan_handler = LifespanHandler::new()
-            .startup(application.clone(), state.clone())
-            .await?;
+        .startup(application.clone(), state.clone())
+        .await?;
 
         tokio::select! {
             _ = tokio::signal::ctrl_c() => lifespan_handler.shutdown().await,

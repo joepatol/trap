@@ -4,8 +4,9 @@ use std::time::Duration;
 
 use asgispec::prelude::*;
 use aras_core::ArasServer;
-use tokio::{runtime::Handle, sync::Semaphore};
-use log::{debug, error, info};
+use tokio::runtime::Handle;
+use tokio::sync::Semaphore;
+use log::{info, debug};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -23,13 +24,9 @@ fn terminate_python_event_loop(py: Python, event_loop: Py<PyAny>) -> PyResult<()
     Ok(())
 }
 
-fn run_python_event_loop(event_loop: Bound<PyAny>) -> Result<(), ()> {
+fn run_python_event_loop(event_loop: Bound<PyAny>) -> Result<Bound<'_, PyAny>, PyErr> {
     let running_loop = (event_loop).call_method0("run_forever");
-    if running_loop.is_err() {
-        error!("Python event loop quit unexpectedly");
-        return Err(());
-    };
-    Ok(())
+    running_loop
 }
 
 fn new_python_event_loop(py: Python) -> PyResult<Bound<PyAny>> {

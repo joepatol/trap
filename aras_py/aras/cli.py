@@ -74,6 +74,7 @@ def serve(
             "Failed to import ASGI application."
             "Did you provide an import string like 'my_app.main:app'?"
         ) from exc
+    
     aras.serve(
         loaded_app,
         addr=[int(i) for i in host.split(".")],

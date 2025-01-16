@@ -3,7 +3,7 @@ use asgispec::scope::LifespanScope;
 use derive_more::Constructor;
 use log::{error, info, warn};
 
-use crate::application::{ApplicationWrapper, RunningApplication};
+use crate::application::{ApplicationWrapper, CalledApplication};
 use crate::error::{Error, Result, UnexpectedShutdownSrc as SRC};
 
 #[derive(Constructor)]
@@ -40,7 +40,7 @@ impl LifespanHandler {
 
 #[derive(Constructor)]
 pub struct StartedLifespanHandler {
-    application: RunningApplication,
+    application: CalledApplication,
     enabled: bool,
 }
 
@@ -64,7 +64,7 @@ impl StartedLifespanHandler {
     }
 }
 
-async fn startup_loop(application: &mut RunningApplication) -> Result<bool> {
+async fn startup_loop(application: &mut CalledApplication) -> Result<bool> {
     application.send_to(ASGIReceiveEvent::new_lifespan_startup()).await?;
     match application.receive_from().await {
         Some(ASGISendEvent::StartupComplete(_)) => Ok(true),
@@ -80,7 +80,7 @@ async fn startup_loop(application: &mut RunningApplication) -> Result<bool> {
     }
 }
 
-async fn shutdown_loop(mut application: RunningApplication) -> Result<()> {
+async fn shutdown_loop(mut application: CalledApplication) -> Result<()> {
     application.send_to(ASGIReceiveEvent::new_lifespan_shutdown()).await?;
     match application.receive_from().await {
         Some(ASGISendEvent::ShutdownComplete(_)) => Ok(()),
