@@ -1,0 +1,8 @@
+fastapi
+sqlalchemy
+python-multipart
+websockets
+fastapi-utils
+typing-inspect
+jinja2
+click
