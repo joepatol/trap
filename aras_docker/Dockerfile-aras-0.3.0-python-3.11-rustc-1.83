@@ -1,0 +1,24 @@
+ARG ARAS_VERSION = "0.3.0"
+ARG PYTHON_VERSION = "3.11"
+ARG RUST_VERSION = "1.83"
+
+FROM rust:$RUST_VERSION as builder
+
+RUN apt update && apt install -y python$PYTHON_VERSION-full
+RUN python$PYTHON_VERSION -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install maturin
+
+# TODO: get aras_py files from context or git
+WORKDIR /usr/src/aras
+COPY . .
+
+RUN maturin build
+
+FROM python:$PYTHON_VERSION as application
+
+COPY --from=builder /usr/src/aras/target/wheels/aras-$ARAS_VERSION-cp${PYTHON_VERSION}-cp${PYTHON_VERSION}-manylinux_2_34_x86_64.whl /app/aras/
+
+WORKDIR /app
+
+RUN pip install aras/aras-$ARAS_VERSION-cp${PYTHON_VERSION}-cp${PYTHON_VERSION}-manylinux_2_34_x86_64.whl
