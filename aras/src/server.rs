@@ -8,6 +8,7 @@ use hyper_util::rt::{TokioIo, TokioTimer};
 use hyper_util::service::TowerToHyperService;
 use log::{error, info};
 use tokio::net::TcpListener;
+use tokio_util::sync::CancellationToken;
 
 use super::middlewares::*;
 use super::service::ArasASGIService;
@@ -30,6 +31,8 @@ pub struct ArasServer {
     body_limit: usize,
     /// Max number of in-flight requests
     concurrency_limit: usize,
+    /// Cancellation token to stop the server
+    cancel_token: CancellationToken
 }
 
 impl ArasServer {
@@ -53,7 +56,7 @@ impl ArasServer {
             let conn_info = ConnectionInfo::new(client, socket_addr);
             let io = TokioIo::new(tcp);
             info!("Connecting new client {client}");
-
+            
             let svc = tower::ServiceBuilder::new()
                 .layer(LogLayer::new())
                 .concurrency_limit(self.concurrency_limit)
@@ -93,7 +96,7 @@ where
         .await?;
 
         tokio::select! {
-            _ = tokio::signal::ctrl_c() => lifespan_handler.shutdown().await,
+            _ = self.cancel_token.cancelled() => lifespan_handler.shutdown().await,
             out = self.run_server(application, state) => out.map_err(|e| Error::unexpected_shutdown(SRC::Server, e.to_string())),
         }
     }

@@ -5,8 +5,8 @@ use std::time::Duration;
 use asgispec::prelude::*;
 use aras_core::ArasServer;
 use tokio::runtime::Handle;
+use log::info;
 use tokio::sync::Semaphore;
-use log::{info, debug};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -16,34 +16,8 @@ use simplelog::*;
 mod convert;
 mod wrappers;
 
-use wrappers::{PyASGIAppWrapper, PyState};
-
-fn terminate_python_event_loop(py: Python, event_loop: Py<PyAny>) -> PyResult<()> {
-    let event_loop_stop_fn = event_loop.getattr(py, "stop")?;
-    event_loop.call_method1(py, "call_soon_threadsafe", (event_loop_stop_fn,))?;
-    Ok(())
-}
-
-fn run_python_event_loop(event_loop: Bound<PyAny>) -> Result<Bound<'_, PyAny>, PyErr> {
-    let running_loop = (event_loop).call_method0("run_forever");
-    running_loop
-}
-
-fn new_python_event_loop(py: Python) -> PyResult<Bound<PyAny>> {
-    let module = match py.import("uvloop") {
-        Ok(evl) => {
-            info!("Using uvloop for Python event loop");
-            evl.call_method0("install")?;
-            Ok(evl)
-        }
-        Err(_) => {
-            info!("Uvloop not installed, using asyncio for Python event loop");
-            py.import("asyncio")
-        }
-    }?;
-
-    module.call_method0("new_event_loop")
-}
+use tokio_util::sync::CancellationToken;
+use wrappers::{PyASGIAppWrapper, PyState, PyStopServerToken};
 
 fn get_log_level_filter(log_level: &str) -> LevelFilter {
     match log_level {
@@ -57,10 +31,20 @@ fn get_log_level_filter(log_level: &str) -> LevelFilter {
     }
 }
 
-// Serve the ASGI application
+#[pyfunction]
+#[pyo3(signature = ())]
+/// Get a new cancel token for stopping the server from Python.
+/// Exclusively useful for `aras.serve_python`
+fn generate_cancel_token() -> PyStopServerToken {
+    let token = CancellationToken::new();
+    PyStopServerToken::new(token)
+}
+
 #[pyfunction]
 #[pyo3(signature = (
-    application, 
+    application,
+    token,
+    event_loop,
     addr = [127, 0, 0, 1], 
     port = 8080, 
     keep_alive = true, 
@@ -68,66 +52,61 @@ fn get_log_level_filter(log_level: &str) -> LevelFilter {
     max_concurrency = None,
     max_size_kb = 1_000_000,
 ))]
-fn serve(
-    py: Python,
+/// Serves a Python ASGI application using the ARAS server. 
+/// 
+/// Configuration of the server is done through the provided parameters.
+/// 
+/// This function requires the Python event loop to be started on the Python side and passed as an argument, a Python awaitable will be returned that resolves
+/// when the server process ends. This way the control and managing of the Python event loop is left completely on the Python side. 
+/// 
+/// A cancellation token is also required to allow shutdown of the server from Python, the token can be generated using the `generate_cancel_token` function.
+/// The ARAS python package will do this ceremony for the user when using aras.serve, hence here we have `serve_python` as it's a lower level function.
+/// 
+/// What you probably want is to create a cancel token, run this function using `event_loop.run_until_complete`, and then when you want to stop the server call 
+/// token.stop() from another thread or signal handler.
+fn serve_python<'a>(
+    py: Python<'a>,
     application: Py<PyAny>,
+    token: PyStopServerToken,
+    event_loop: Bound<'_, PyAny>,
     addr: [u8; 4],
     port: u16,
     keep_alive: bool,
     log_level: &str,
     max_concurrency: Option<usize>,
     max_size_kb: usize,
-) -> PyResult<()> {
+) -> PyResult<Bound<'a, PyAny>> {
     SimpleLogger::init(get_log_level_filter(log_level), Config::default())
         .map_err(|e| PyRuntimeError::new_err(format!("Failed to start logger. {}", e)))?;
 
-    let state = PyState::new(PyDict::new(py).unbind()); // State dictionary for the ASGI application
+    let state = PyState::new(PyDict::new(py).unbind());
+    let cancel_token = token.get_cancel_token();
+    let task_locals = pyo3_async_runtimes::TaskLocals::new(event_loop).copy_context(py)?;
+    let asgi_application = PyASGIAppWrapper::new(application, task_locals.clone_ref(py));
+    
+    let asgi_server = ArasServer::new(
+        addr.into(),
+        port,
+        keep_alive,
+        Duration::from_secs(60),
+        max_size_kb * 1000,
+        max_concurrency.unwrap_or(Semaphore::MAX_PERMITS),
+        cancel_token,
+    );
+    
+    pyo3_async_runtimes::tokio::future_into_py_with_locals(py, task_locals, async move {
+        info!("Started {} workers", Handle::current().metrics().num_workers());
 
-    // asyncio setup
-    let asyncio = py.import("asyncio")?;
-    let event_loop = new_python_event_loop(py)?;
-    let event_loop_clone = event_loop.clone().into();
-    asyncio.call_method1("set_event_loop", (&event_loop,))?;
-
-    // TaskLocals stores a reference to the event loop, which can be used to run Python coroutines
-    let task_locals = pyo3_async_runtimes::TaskLocals::new(event_loop.clone()).copy_context(py)?;
-
-    // Run Rust event loop with the server in a separate thread
-    let server_task = std::thread::spawn(move || {
-        let server_result = Python::with_gil(|py| {
-            pyo3_async_runtimes::tokio::run(py, async move {
-                info!("Started {} workers", Handle::current().metrics().num_workers());
-
-                let asgi_application = PyASGIAppWrapper::new(application, task_locals);
-                let asgi_server = ArasServer::new(
-                    addr.into(), port, keep_alive, Duration::from_secs(60), max_size_kb * 1000, max_concurrency.unwrap_or(Semaphore::MAX_PERMITS)
-                );
-                asgi_server.run(asgi_application, state).await.map_err(|e| PyRuntimeError::new_err(format!("Error running server; {}", e)))
-            })
-        });
-
-        // When the server is done, stop Python's event loop as well
-        debug!("Terminate Python event loop");
-        Python::with_gil(|py| terminate_python_event_loop(py, event_loop_clone))?;
-
-        server_result
-    });
-
-    // Python's event loop runs in the main thread
-    if run_python_event_loop(event_loop).is_err() {
-        return Err(PyRuntimeError::new_err(
-            "Python event loop quit, cannot shutdown gracefully",
-        ));
-    }
-
-    server_task
-        .join()
-        .map_err(|e| PyRuntimeError::new_err(format!("{e:?}")))??;
-    Ok(())
+        asgi_server
+        .run(asgi_application, state)
+        .await
+        .map_err(|e| PyRuntimeError::new_err(format!("Error running server; {}", e)))
+    })
 }
 
 #[pymodule]
 fn aras(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(serve, m)?)?;
+    m.add_function(wrap_pyfunction!(serve_python, m)?)?;
+    m.add_function(wrap_pyfunction!(generate_cancel_token, m)?)?;
     Ok(())
 }

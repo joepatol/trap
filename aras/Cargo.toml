@@ -24,5 +24,6 @@ futures-util = "^0.3.0"
 fastwebsockets = { version = "0.10.0", features = ["upgrade"] }
 async-channel = "2.3.1"
 simplelog = "^0.12.0"
+tokio-util = "0.7.17"
 
 [dev-dependencies]

@@ -1,15 +1,43 @@
-use std::{fmt::Debug, sync::{Arc, Mutex}};
+use std::{
+    fmt::Debug,
+    sync::{Arc, Mutex},
+};
 
+use aras_core::ArasError;
+use asgispec::prelude::*;
 use log::{debug, error};
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
     prelude::*,
     types::{PyDict, PyMapping, PyString},
 };
-use aras_core::ArasError;
-use asgispec::prelude::*;
+use tokio_util::sync::CancellationToken;
 
 use super::convert;
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct PyStopServerToken {
+    token: CancellationToken,
+}
+
+impl PyStopServerToken {
+    pub fn new(token: CancellationToken) -> Self {
+        Self { token }
+    }
+
+    pub fn get_cancel_token(&self) -> CancellationToken {
+        self.token.clone()
+    }
+}
+
+#[pymethods]
+impl PyStopServerToken {
+    pub fn stop(&self) {
+        debug!("Stopping server via StopServerToken");
+        self.token.cancel();
+    }
+}
 
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -189,9 +217,7 @@ impl PySend {
             //         e => PyRuntimeError::new_err(format!("Error in ASGI 'send': {}", e))
             //     }
             // })
-            .map_err(|e| {
-                PyRuntimeError::new_err(format!("Error in ASGI 'send': {}", e))
-            })?;
+            .map_err(|e| PyRuntimeError::new_err(format!("Error in ASGI 'send': {}", e)))?;
         Ok(())
     }
 }
@@ -212,11 +238,7 @@ impl PyReceive {
     async fn __call__(&self) -> PyResult<Py<PyDict>> {
         let received = (self.receive)().await;
         debug!("Receive: {}", &received);
-        Python::with_gil(|py| {
-            PyASGIReceiveEvent::new(received)
-                .into_pyobject(py)
-                .map(|v| v.unbind())
-        })
+        Python::with_gil(|py| PyASGIReceiveEvent::new(received).into_pyobject(py).map(|v| v.unbind()))
     }
 }
 
@@ -250,10 +272,7 @@ impl ASGIApplication for PyASGIAppWrapper {
                 ),
             );
 
-            pyo3_async_runtimes::into_future_with_locals(
-                &self.task_locals,
-                maybe_awaitable?.bind(py).to_owned(),
-            )
+            pyo3_async_runtimes::into_future_with_locals(&self.task_locals, maybe_awaitable?.bind(py).to_owned())
         });
         future
             .map_err(|e: PyErr| ArasError::custom(e.to_string()))?

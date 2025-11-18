@@ -31,3 +31,6 @@ test = [
     "pytest-timeout",
     "testcontainers",
 ]
+dev = [
+    "maturin",
+]

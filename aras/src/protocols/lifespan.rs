@@ -48,6 +48,7 @@ impl StartedLifespanHandler {
     pub async fn shutdown(self) -> Result<()> {
         info!("Application shutting down");
         if !self.enabled {
+            info!("Lifespan protocol disabled...");
             return Ok(());
         };
 

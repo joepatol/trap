@@ -63,9 +63,11 @@ def serve(
     max_concurrency: int | None,
     max_size_kb: int,
 ) -> None:
+    # Insert current working directory to sys.path to make sure the dynamic import,
+    # which is referenced from the cwd, works correctly.
     sys.path.insert(0, os.getcwd())
-    os.environ["RUST_LOG"] = f"tower_http={log_level.lower()}"
     module_str, application_str = application.split(":")
+
     try:
         module = importlib.import_module(module_str)
         loaded_app = getattr(module, application_str)
@@ -73,13 +75,15 @@ def serve(
         raise ImportError(
             "Failed to import ASGI application."
             "Did you provide an import string like 'my_app.main:app'?"
+            "Make sure you provided a valid path from the current working directory."
         ) from exc
     
     aras.serve(
         loaded_app,
-        addr=[int(i) for i in host.split(".")],
-        port=port,
-        keep_alive=not no_keep_alive,
-        max_concurrency=max_concurrency,
-        max_size_kb=max_size_kb,
+        host,
+        port,
+        log_level,
+        no_keep_alive,
+        max_concurrency,
+        max_size_kb,    
     )

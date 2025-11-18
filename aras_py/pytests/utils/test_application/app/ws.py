@@ -123,13 +123,8 @@ async def websocket_chat_endpoint(websocket: WebSocket, client_id: int):
     await manager.connect(websocket, client_id)
     try:
         while True:
-            print("app waiting on message")
             data = await websocket.receive_text()
-            print("received: ", data)
             await manager.send_personal_message(f"You wrote: {data}", websocket)
-            print("message send")
             await manager.broadcast(f"Client #{client_id} says: {data}")
-            print("message broadcast")
     except WebSocketDisconnect:
-        print("app disconnect")
         await manager.disconnect(websocket, client_id)

@@ -13,6 +13,7 @@ use crate::error::{Result, Error};
 use crate::protocols::{HTTPHandler, WebsocketHandler};
 use crate::types::{ServiceFuture, ConnectionInfo, Response};
 
+// A Tower service that handles an ASGI application
 #[derive(Constructor, Clone)]
 pub struct ArasASGIService<A: ASGIApplication> {
     application: A,
