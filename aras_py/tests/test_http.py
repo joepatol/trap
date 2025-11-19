@@ -1,7 +1,7 @@
 import pytest
 from httpx import AsyncClient
 
-from pytests.utils.arrange import ASSETS_FOLDER
+from tests.utils.arrange import ASSETS_FOLDER
 
 
 @pytest.mark.asyncio(scope="session")

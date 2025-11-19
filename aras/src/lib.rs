@@ -7,7 +7,7 @@ mod protocols;
 mod middlewares;
 
 #[cfg(test)]
-#[path ="../tests/utils/applications.rs"]
+#[path ="../test_utils/applications.rs"]
 mod applications;
 
 pub use error::{Error as ArasError, Result as ArasResult};

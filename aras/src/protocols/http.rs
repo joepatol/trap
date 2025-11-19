@@ -295,7 +295,8 @@ mod tests {
         ).await;
 
         let body = response.unwrap().into_body().collect().await;
-        assert!(body.is_err_and(|e| e.to_string() == "Unexpected ASGI message received. StartupComplete(LifespanStartupCompleteEvent { type_: \"lifespan.startup.complete\" })"));
+        println!("{:?}", body.as_ref().map_err(|e| e.to_string()));
+        assert!(body.is_err_and(|e| e.to_string() == "Unexpected ASGI message received. StartupComplete(LifespanStartupCompleteEvent)"))
     }
 
     #[tokio::test]

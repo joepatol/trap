@@ -1,5 +1,4 @@
 // ASGI Applications used for testing
-
 use asgispec::prelude::*;
 
 // Mocks
