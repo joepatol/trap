@@ -3,13 +3,14 @@ import signal
 from typing import Any
 
 from .aras import serve_python, generate_cancel_token  # type: ignore
+from .types import LogLevel, ASGIApplication
 
 
 def serve(
-    application: Any,
+    application: ASGIApplication,
     host: str = "127.0.0.1",
     port: int = 8080,
-    log_level: Any = "INFO",
+    log_level: LogLevel = "INFO",
     keep_alive: bool = True,
     max_concurrency: int | None = None,
     max_size_kb: int = 1_000_000,
