@@ -115,7 +115,7 @@ pub enum ASGISendEvent {
     ShutdownComplete(LifespanShutdownCompleteEvent),
     ShutdownFailed(LifespanShutdownFailedEvent),
     HTTPResponseStart(HTTPResponseStartEvent),
-    HTTPResponseBody(HTTPResonseBodyEvent),
+    HTTPResponseBody(HTTPResponseBodyEvent),
     WebsocketAccept(WebsocketAcceptEvent),
     WebsocketClose(WebsocketCloseEvent),
     WebsocketSend(WebsocketSendEvent),
@@ -154,7 +154,7 @@ impl ASGISendEvent {
     }
 
     pub fn new_http_response_body(data: Vec<u8>, more_body: bool) -> Self {
-        Self::HTTPResponseBody(HTTPResonseBodyEvent::new(data, more_body))
+        Self::HTTPResponseBody(HTTPResponseBodyEvent::new(data, more_body))
     }
 
     pub fn new_websocket_accept(subprotocol: Option<String>, headers: Vec<(Vec<u8>, Vec<u8>)>) -> Self {

@@ -107,7 +107,7 @@ impl CalledApplication {
         match self.result_handle.try_recv() {
             Ok(_) => {
                 return Err(Error::custom(
-                    "Attempted to send message to application that has finshed",
+                    "Attempted to send message to application that has finished",
                 ))
             }
             Err(TryRecvError::Closed) => {
