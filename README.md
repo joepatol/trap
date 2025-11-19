@@ -2,7 +2,7 @@
 
 
 Todo list:
-- Docker
 - Finish rust tests
 - Python tests
-- Tests for asgispec
+- Tests for asgispec?
+- ASGI extensions

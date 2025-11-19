@@ -23,14 +23,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = [
-    "pytest",
-    "mypy",
-    "requests",
-    "types-requests",
-    "pytest-timeout",
-    "testcontainers",
-]
 dev = [
+    "pytest",
+    "pytest-asyncio",
+    "mypy",
+    "httpx",
+    "pytest-timeout",
     "maturin",
+    "fastapi",
+    "sqlalchemy",
+    "python-multipart",
+    "websockets",
+    "fastapi-utils",
+    "typing-inspect",
+    "jinja2",
 ]

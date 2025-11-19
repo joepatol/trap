@@ -27,6 +27,7 @@ def serve(
             addr=[int(i) for i in host.split(".")],
             port=port,
             keep_alive=not no_keep_alive,
+            # log_leveL=log_level,
             max_concurrency=max_concurrency,
             max_size_kb=max_size_kb,
         )

@@ -48,7 +48,7 @@ fn generate_cancel_token() -> PyStopServerToken {
     addr = [127, 0, 0, 1], 
     port = 8080, 
     keep_alive = true, 
-    log_level = "INFO", 
+    log_level = "INFO",
     max_concurrency = None,
     max_size_kb = 1_000_000,
 ))]

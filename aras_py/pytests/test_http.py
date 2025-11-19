@@ -1,72 +1,69 @@
-import requests
-from .conftest import AppContainerInfo
+from httpx import AsyncClient
 
 from pytests.utils.arrange import ASSETS_FOLDER
 
 
-def test_healthy(asgi_application: AppContainerInfo) -> None:
-    response = requests.get(f"{asgi_application.uri}/health_check")
-    
+async def test_healthy(httpx_client: AsyncClient) -> None:
+    response = await httpx_client.get("/health_check")
     assert response.status_code == 200
 
 
-def test_not_found(asgi_application: AppContainerInfo) -> None:
-    response = requests.get(f"{asgi_application.uri}/does_not_exist")
-    
+async def test_not_found(httpx_client: AsyncClient) -> None:
+    response = await httpx_client.get("/does_not_exist")
     assert response.status_code == 404
     
 
-def test_echo_json(asgi_application: AppContainerInfo) -> None:
+async def test_echo_json(httpx_client: AsyncClient) -> None:
     data = {"Hi": "there"}
-    response = requests.post(f"{asgi_application.uri}/api/basic/echo_json", json=data)
+    response = await httpx_client.post("/api/basic/echo_json", json=data)
     
     assert response.status_code == 200
     assert response.json() == data
 
 
-def test_echo_text(asgi_application: AppContainerInfo) -> None:
+async def test_echo_text(httpx_client: AsyncClient) -> None:
     data = "Hello"
-    response = requests.get(f"{asgi_application.uri}/api/basic/echo_text?data={data}")
+    response = await httpx_client.get(f"/api/basic/echo_text?data={data}")
     
     assert response.status_code == 200
     assert response.text == data
 
 
-def test_headers_ok(asgi_application: AppContainerInfo) -> None:
-    response = requests.post(f"{asgi_application.uri}/api/basic/echo_json", json={"hi": "server"})
+async def test_headers_ok(httpx_client: AsyncClient) -> None:
+    response = await httpx_client.post("/api/basic/echo_json", json={"hi": "server"})
     
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/json"
     assert response.headers["Content-Length"] == "15"
 
 
-def test_additional_headers_ok(asgi_application: AppContainerInfo) -> None:
-    response = requests.get(f"{asgi_application.uri}/api/basic/more_headers")
+async def test_additional_headers_ok(httpx_client: AsyncClient) -> None:
+    response = await httpx_client.get("/api/basic/more_headers")
     
     assert response.status_code == 200
     assert response.headers["the"] == "header"
 
 
-def test_app_raises_error(asgi_application: AppContainerInfo) -> None:
-    response = requests.get(f"{asgi_application.uri}/api/basic/error")
+async def test_app_raises_error(httpx_client: AsyncClient) -> None:
+    response = await httpx_client.get("/api/basic/error")
     
     assert response.status_code == 500
     assert response.text == "Internal Server Error"
 
 
-def test_state_is_persisted(asgi_application: AppContainerInfo) -> None:
+async def test_state_is_persisted(httpx_client: AsyncClient) -> None:
     data = {"key": "value"}
-    response = requests.patch(f"{asgi_application.uri}/api/basic/state", json=data)
+    response = await httpx_client.patch("/api/basic/state", json=data)
     
     assert response.status_code == 204
     
-    response = requests.get(f"{asgi_application.uri}/api/basic/state")
+    response = await httpx_client.get("/api/basic/state")
     
     assert response.status_code == 200
     assert response.text == "{'key': 'value'}"
 
 
-def test_create_note(asgi_application: AppContainerInfo) -> None:
+async def test_create_note(httpx_client: AsyncClient) -> None:
     data = {
         "title": "Test Note", 
         "content": "This is a test note", 
@@ -75,7 +72,7 @@ def test_create_note(asgi_application: AppContainerInfo) -> None:
         "updatedAt": "2021-01-01T00:00:00Z",
         "category": "test",
     }
-    response = requests.post(f"{asgi_application.uri}/api/notes", json=data)
+    response = await httpx_client.post("/api/notes", json=data)
     
     assert response.status_code == 201
     
@@ -88,7 +85,7 @@ def test_create_note(asgi_application: AppContainerInfo) -> None:
     assert note_data["category"] == data["category"]
     
 
-def test_patch_note(asgi_application: AppContainerInfo) -> None:
+async def test_patch_note(httpx_client: AsyncClient) -> None:
     data = {
         "title": "Test Note", 
         "content": "This is a test note", 
@@ -97,22 +94,22 @@ def test_patch_note(asgi_application: AppContainerInfo) -> None:
         "updatedAt": "2021-01-01T00:00:00Z",
         "category": "test",
     }
-    response = requests.post(f"{asgi_application.uri}/api/notes", json=data)
+    response = await httpx_client.post("/api/notes", json=data)
     assert response.status_code == 201
     
     note_id = response.json()["note"]["id"]
     
     data = {"title": "Updated Title", "content": "Updated Content"}
     
-    response = requests.patch(f"{asgi_application.uri}/api/notes/{note_id}", json=data)
+    response = await httpx_client.patch(f"/api/notes/{note_id}", json=data)
     assert response.status_code == 200
 
 
-def test_upload_file(asgi_application: AppContainerInfo) -> None:
+async def test_upload_file(httpx_client: AsyncClient) -> None:
     with open(str(ASSETS_FOLDER / "basic_file.txt"), 'rb') as f1:
         with open(str(ASSETS_FOLDER / "test_file.txt")) as f2:
-            response = requests.post(
-                f"{asgi_application.uri}/api/files/files/",
+            response = await httpx_client.post(
+                "/api/files/files/",
                 files=[('files', f1), ('files', f2)],
             )
     
