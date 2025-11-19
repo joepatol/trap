@@ -37,7 +37,7 @@ def run_application_with_server() -> Generator[None, None, None]:
     process.start()
     time.sleep(1)  # Give the server time to start
     yield
-    process.terminate()
+    process.terminate()  # Sends SIGTERM
     time.sleep(1)  # Give the server time to shut down
     process.close()
 

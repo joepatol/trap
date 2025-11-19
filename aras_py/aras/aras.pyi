@@ -1,10 +1,7 @@
 from typing import Awaitable
 
 from asyncio import BaseEventLoop
-from .aras_types import ASGIApplication, LogLevel
-
-class CancelToken:
-    def stop(self) -> None: ...
+from .aras_types import ASGIApplication, LogLevel, CancelToken
 
 
 def generate_cancel_token() -> CancelToken: ...

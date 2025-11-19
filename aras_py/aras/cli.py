@@ -83,7 +83,7 @@ def serve(
         host,
         port,
         log_level,
-        no_keep_alive,
+        not no_keep_alive,
         max_concurrency,
         max_size_kb,    
     )
