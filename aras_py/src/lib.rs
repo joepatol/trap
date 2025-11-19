@@ -1,8 +1,8 @@
-extern crate aras;
+extern crate aras as aras_core;
 
 use std::time::Duration;
 
-use aras::ArasServer;
+use aras_core::ArasServer;
 use asgispec::prelude::*;
 use log::info;
 use pyo3::exceptions::PyRuntimeError;
@@ -108,7 +108,7 @@ fn serve_python<'a>(
 }
 
 #[pymodule]
-fn aras_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn aras(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(serve_python, m)?)?;
     m.add_function(wrap_pyfunction!(generate_cancel_token, m)?)?;
     Ok(())

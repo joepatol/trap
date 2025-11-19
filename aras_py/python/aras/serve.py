@@ -1,15 +1,15 @@
-import signal
 import asyncio
+import signal
+from typing import Any
 
-from aras.aras_types import ASGIApplication, LogLevel
-from aras_core.aras_core import generate_cancel_token, serve_python
+from .aras import serve_python, generate_cancel_token
 
 
 def serve(
-    application: ASGIApplication,
+    application: Any,
     host: str = "127.0.0.1",
     port: int = 8080,
-    log_level: LogLevel = "INFO",
+    log_level: Any = "INFO",
     keep_alive: bool = True,
     max_concurrency: int | None = None,
     max_size_kb: int = 1_000_000,

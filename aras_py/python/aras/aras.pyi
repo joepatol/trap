@@ -1,22 +1,14 @@
+import asyncio
 from typing import Awaitable
 
-from asyncio import BaseEventLoop
-from ..aras_types import ASGIApplication, LogLevel, CancelToken
-
-
-__all__ = [
-    "generate_cancel_token",
-    "serve_python",
-]
-
+from .types import CancelToken, ASGIApplication, LogLevel
 
 def generate_cancel_token() -> CancelToken: ...
-
 
 def serve_python(
     application: ASGIApplication,
     token: CancelToken,
-    event_loop: BaseEventLoop,
+    event_loop: asyncio.AbstractEventLoop,
     addr: list[int] = [127, 0, 0, 1],
     port: int = 8080,
     keep_alive: bool = True,

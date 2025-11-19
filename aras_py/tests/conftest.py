@@ -1,11 +1,12 @@
 import time
+import asyncio
 import multiprocessing
 from typing import AsyncGenerator, Generator
 
 import pytest
 import httpx
 import pytest_asyncio
-import aras
+from aras import serve
 
 from .utils.application.main import app as asgi_app
 
@@ -15,7 +16,7 @@ PORT = 8080
 
 
 def _run_server_process() -> None:
-    aras.serve(
+    serve(
         asgi_app,
         host=HOST,
         port=PORT,

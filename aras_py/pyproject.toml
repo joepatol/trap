@@ -19,7 +19,8 @@ dependencies = [
 aras = "aras.cli:cli"
 
 [tool.maturin]
-python-source = "aras"
+python-source = "python"
+module-name = "aras"
 bindings = "pyo3"
 features = ["pyo3/extension-module"]
 

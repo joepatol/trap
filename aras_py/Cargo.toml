@@ -5,7 +5,7 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-name = "aras_core"
+name = "aras"
 crate-type = ["cdylib"]
 
 [dependencies]
@@ -19,4 +19,4 @@ tokio = { version = "1.13", features = ["full"] }
 tokio-util = "0.7.17"
 
 [package.metadata.maturin]
-python-source = "aras"
+python-source = "python"

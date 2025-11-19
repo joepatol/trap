@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use aras::ArasError;
+use aras_core::ArasError;
 use asgispec::prelude::*;
 use log::{debug, error};
 use pyo3::{
