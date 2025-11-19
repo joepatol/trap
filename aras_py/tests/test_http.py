@@ -4,19 +4,19 @@ from httpx import AsyncClient
 from tests.utils.arrange import ASSETS_FOLDER
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_healthy(httpx_client: AsyncClient) -> None:
     response = await httpx_client.get("/health_check")
     assert response.status_code == 200
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_not_found(httpx_client: AsyncClient) -> None:
     response = await httpx_client.get("/does_not_exist")
     assert response.status_code == 404
     
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_echo_json(httpx_client: AsyncClient) -> None:
     data = {"Hi": "there"}
     response = await httpx_client.post("/api/basic/echo_json", json=data)
@@ -25,7 +25,7 @@ async def test_echo_json(httpx_client: AsyncClient) -> None:
     assert response.json() == data
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_echo_text(httpx_client: AsyncClient) -> None:
     data = "Hello"
     response = await httpx_client.get(f"/api/basic/echo_text?data={data}")
@@ -34,7 +34,7 @@ async def test_echo_text(httpx_client: AsyncClient) -> None:
     assert response.text == data
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_headers_ok(httpx_client: AsyncClient) -> None:
     response = await httpx_client.post("/api/basic/echo_json", json={"hi": "server"})
     
@@ -43,7 +43,7 @@ async def test_headers_ok(httpx_client: AsyncClient) -> None:
     assert response.headers["Content-Length"] == "15"
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_additional_headers_ok(httpx_client: AsyncClient) -> None:
     response = await httpx_client.get("/api/basic/more_headers")
     
@@ -51,7 +51,7 @@ async def test_additional_headers_ok(httpx_client: AsyncClient) -> None:
     assert response.headers["the"] == "header"
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_app_raises_error(httpx_client: AsyncClient) -> None:
     response = await httpx_client.get("/api/basic/error")
     
@@ -59,7 +59,7 @@ async def test_app_raises_error(httpx_client: AsyncClient) -> None:
     assert response.text == "Internal Server Error"
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_state_is_persisted(httpx_client: AsyncClient) -> None:
     data = {"key": "value"}
     response = await httpx_client.patch("/api/basic/state", json=data)
@@ -72,7 +72,7 @@ async def test_state_is_persisted(httpx_client: AsyncClient) -> None:
     assert response.text == "{'key': 'value'}"
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_create_note(httpx_client: AsyncClient) -> None:
     data = {
         "title": "Test Note", 
@@ -95,7 +95,7 @@ async def test_create_note(httpx_client: AsyncClient) -> None:
     assert note_data["category"] == data["category"]
     
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_patch_note(httpx_client: AsyncClient) -> None:
     data = {
         "id": "666de0fd-ea39-4a52-baf9-f4901a894bed",
@@ -115,7 +115,7 @@ async def test_patch_note(httpx_client: AsyncClient) -> None:
     assert response.status_code == 200
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_upload_file(httpx_client: AsyncClient) -> None:
     with open(str(ASSETS_FOLDER / "basic_file.txt"), 'rb') as f1:
         with open(str(ASSETS_FOLDER / "test_file.txt"), 'rb') as f2:

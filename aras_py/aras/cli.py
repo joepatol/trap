@@ -3,8 +3,8 @@ import os
 import sys
 
 import click
-import aras
-from aras import LogLevel
+from aras_py.aras.aras import serve
+from aras_types import LogLevel
 
 
 @click.group()
@@ -78,7 +78,7 @@ def serve(
             "Make sure you provided a valid path from the current working directory."
         ) from exc
     
-    aras.serve(
+    serve(
         loaded_app,
         host,
         port,

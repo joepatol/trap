@@ -11,16 +11,17 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
+dependencies = [
+    "click >= 8.0.0"
+]
 
 [project.scripts]
 aras = "aras.cli:cli"
 
 [tool.maturin]
+python-source = "aras"
+bindings = "pyo3"
 features = ["pyo3/extension-module"]
-
-dependencies = [
-    "click >= 8.0.0"
-]
 
 [project.optional-dependencies]
 dev = [

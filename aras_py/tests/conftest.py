@@ -5,7 +5,7 @@ from typing import AsyncGenerator, Generator
 import pytest
 import httpx
 import pytest_asyncio
-import aras
+from aras_py.aras.aras import serve
 
 from .utils.application.main import app as asgi_app
 
@@ -15,14 +15,10 @@ PORT = 8080
 
 
 def _run_server_process() -> None:
-    aras.serve(
+    serve(
         asgi_app,
         host=HOST,
         port=PORT,
-        log_level="INFO",
-        no_keep_alive=False,
-        max_concurrency=None,
-        max_size_kb=1_000_000,
     )
 
 
