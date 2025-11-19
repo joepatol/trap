@@ -23,12 +23,12 @@ def serve(
     loop.run_until_complete(
         serve_python(
             application,
-            token=token,
-            event_loop=loop,
+            token,
+            loop,
             addr=[int(i) for i in host.split(".")],
             port=port,
             keep_alive=keep_alive,
-            log_leveL=log_level,
+            log_level=log_level,
             max_concurrency=max_concurrency,
             max_size_kb=max_size_kb,
         )
