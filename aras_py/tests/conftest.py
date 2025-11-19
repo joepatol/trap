@@ -1,5 +1,4 @@
 import time
-import asyncio
 import multiprocessing
 from typing import AsyncGenerator, Generator
 
