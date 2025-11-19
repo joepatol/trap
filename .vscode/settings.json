@@ -5,7 +5,7 @@
         "editor.formatOnSave": true // Optional
     },
     "python.testing.pytestArgs": [
-        "pytests"
+        "aras_py/tests"
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,

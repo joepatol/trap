@@ -1,0 +1,22 @@
+[package]
+name = "aras_py"
+version = "0.4.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "aras"
+crate-type = ["cdylib"]
+
+[dependencies]
+aras = { path = "../aras" }
+asgispec = { path = "../asgispec" }
+pyo3 = { version = "^0.23.3", features = ["experimental-async"] }
+pyo3-async-runtimes = { version = "0.23", features = ["attributes", "tokio-runtime"] }
+log = "0.4.22"
+simplelog = "^0.12.0"
+tokio = { version = "1.13", features = ["full"] }
+tokio-util = "0.7.17"
+
+[package.metadata.maturin]
+python-source = "python"
