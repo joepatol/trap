@@ -22,7 +22,7 @@ def _run_server_process() -> None:
     )
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def run_application_with_server() -> Generator[None, None, None]:
     # Start a new Python process to run the ARAS ASGI server with an
     # application

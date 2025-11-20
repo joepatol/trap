@@ -4,7 +4,7 @@ import sys
 
 import click
 from .types import LogLevel
-from .serve import serve
+from .serve import serve as serve_app
 
 
 @click.group()
@@ -78,7 +78,7 @@ def serve(
             "Make sure you provided a valid path from the current working directory."
         ) from exc
     
-    serve(
+    serve_app(
         loaded_app,
         host,
         port,
@@ -87,3 +87,7 @@ def serve(
         max_concurrency,
         max_size_kb,    
     )
+
+
+if __name__ == "__main__":
+    cli()
