@@ -129,7 +129,7 @@ async fn run_accepted_websocket(called_app: &mut CalledApplication, upgraded_io:
     called_app
         .send_to(ASGIReceiveEvent::new_websocket_disconnect(1005))
         .await?;
-    called_app.close().await;
+    called_app.close();
 
     Ok(())
 }

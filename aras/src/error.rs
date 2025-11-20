@@ -40,6 +40,14 @@ pub enum Error {
 
     #[error(transparent)]
     WebsocketError(#[from] fastwebsockets::WebSocketError),
+
+    #[error("Application returned, {msg:?}")]
+    ApplicationReturned { 
+        msg: Box<dyn std::fmt::Debug + Send + Sync> 
+    },
+
+    #[error("Application is not running")]
+    ApplicationNotRunning,
 }
 
 pub enum UnexpectedShutdownSrc {
@@ -59,6 +67,14 @@ impl From<UnexpectedShutdownSrc> for String {
 impl Error {
     pub fn custom(val: impl std::fmt::Display) -> Self {
         Self::Custom(val.to_string())
+    }
+
+    pub fn app_returned(msg: Box<dyn std::fmt::Debug + Send + Sync>) -> Self {
+        Self::ApplicationReturned { msg }
+    }
+
+    pub fn application_not_running() -> Self {
+        Self::ApplicationNotRunning
     }
 
     pub fn unexpected_asgi_message(msg: Box<dyn std::fmt::Debug + Send + Sync>) -> Self {

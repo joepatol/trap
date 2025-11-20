@@ -99,7 +99,7 @@ async fn build_body_stream(mut asgi_app: CalledApplication) -> BoxBody<Bytes, Er
                 // If sending the disconnect event fails, it's because the application
                 // cannot receive any more messages. We don't care...
                 _ = asgi_app.send_to(ASGIReceiveEvent::new_http_disconnect()).await;
-                asgi_app.close().await;
+                asgi_app.close();
                 break
             }
             match asgi_app.receive_from().await {
@@ -219,7 +219,10 @@ mod tests {
         ).await;
 
         assert!(response.is_err_and(
-            |e| e.to_string() == "Application shutdown unexpectedly. stopped without sending HTTP response"
+            |e| {
+                println!("{}", e.to_string());
+                e.to_string() == "Application shutdown unexpectedly. stopped without sending HTTP response"
+            }
         ));
     }
 

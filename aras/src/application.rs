@@ -96,23 +96,23 @@ pub(crate) struct CalledApplication {
 impl CalledApplication {
     /// Close communication with the application, by closing the receive queue.
     /// This prevents any new message to be send to the application.
-    pub async fn close(&mut self) {
+    pub fn close(&mut self) {
         self.receive_queue.close();
     }
 
     /// Send a message to the application. This method will first check if the application is still
     /// running and return an error if not.
-    /// Sending the message can also fail if the internal channel is closed
     pub async fn send_to(&mut self, message: ASGIReceiveEvent) -> Result<()> {
         match self.result_handle.try_recv() {
-            Ok(_) => {
-                return Err(Error::custom(
-                    "Attempted to send message to application that has finished",
-                ))
+            // Application stopped between the previous communication and this one
+            Ok(e) => {
+                return Err(Error::app_returned(Box::new(format!("{e:?}"))))
             }
+            // Application stopped before the previous communication
             Err(TryRecvError::Closed) => {
-                return Err(Error::custom("Attempted to send message to application that stopped"))
+                return Err(Error::application_not_running())
             }
+            // Application is still running
             Err(TryRecvError::Empty) => {}
         };
 
@@ -135,12 +135,12 @@ impl CalledApplication {
             // There is a return message, so we will not get any more messages
             (Ok(app_returned), true) => {
                 match app_returned {
-                    Ok(m) => Err(Error::custom(format!("Application returned; {m:?}"))),
-                    Err(e) => Err(e),
+                    Ok(m) => Err(Error::app_returned(Box::new(format!("application quit ok: {m:?}")))),
+                    Err(e) => Err(Error::app_returned(Box::new(format!("application quit with error: {e:?}")))),
                 }
             },
             // There is no return message because the channel is closed or it was already received
-            (Err(TryRecvError::Closed), true) => {Err(Error::custom("Application has stopped"))}
+            (Err(TryRecvError::Closed), true) => {Err(Error::application_not_running())}
         }
     }
 }
@@ -176,7 +176,7 @@ mod tests {
     async fn test_send_is_error_after_close() {
         let wrapper = ApplicationWrapper::from(AssertSendErrorApp {});
         let mut called_app = wrapper.call(build_lifespan_scope());
-        called_app.close().await;
+        called_app.close();
         called_app
             .send_to(ASGIReceiveEvent::new_http_disconnect())
             .await
