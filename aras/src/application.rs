@@ -123,15 +123,25 @@ impl CalledApplication {
         Ok(())
     }
 
-    /// Receive a message from the application. This method first checks if any message can be received
-    /// (now or by waiting for one). If no message can be received, or receiving returns an error, `None` is returned.
-    pub async fn receive_from(&mut self) -> Option<ASGISendEvent> {
+    /// Receive a message from the application. If a message is on the queue it will immediately be received and
+    /// returned. If not, this method will check if any more message can be received by checking if the application has returned.
+    /// If the application has returned, an error is returned. If not, this method will wait for a new message to arrive.  
+    pub async fn receive_from(&mut self) -> Result<ASGISendEvent> {
         match (self.result_handle.try_recv(), self.receive_queue.is_empty()) {
-            (Ok(_), true) | (Err(TryRecvError::Closed), true) => return None,
-            _ => {}
-        };
-
-        self.receive_queue.recv().await.ok()
+            // If there is a message, receive it
+            (_, false) => Ok(self.receive_queue.recv().await?),
+            // There is no return message, but the app is still running, so wait for one
+            (Err(TryRecvError::Empty), true) => Ok(self.receive_queue.recv().await?),
+            // There is a return message, so we will not get any more messages
+            (Ok(app_returned), true) => {
+                match app_returned {
+                    Ok(m) => Err(Error::custom(format!("Application returned; {m:?}"))),
+                    Err(e) => Err(e),
+                }
+            },
+            // There is no return message because the channel is closed or it was already received
+            (Err(TryRecvError::Closed), true) => {Err(Error::custom("Application has stopped"))}
+        }
     }
 }
 

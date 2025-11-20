@@ -72,20 +72,20 @@ async fn build_response(mut asgi_app: CalledApplication) -> Result<Response> {
     let mut builder = hyper::Response::builder();
 
     let body = match asgi_app.receive_from().await {
-        Some(ASGISendEvent::HTTPResponseStart(msg)) => {
+        Ok(ASGISendEvent::HTTPResponseStart(msg)) => {
             builder = builder.status(msg.status);
             for (bytes_key, bytes_value) in msg.headers.into_iter() {
                 builder = builder.header(bytes_key, bytes_value);
             }
             build_body_stream(asgi_app).await
         }
-        None => {
+        Ok(msg) => return Err(Error::unexpected_asgi_message(Box::new(msg))),
+        Err(e) => {
             return Err(Error::unexpected_shutdown(
                 SRC::Application,
-                "stopped without sending HTTP response".into(),
+                format!("Stopped without sending HTTP response: {e}").into(),
             ))
         }
-        Some(msg) => return Err(Error::unexpected_asgi_message(Box::new(msg))),
     };
 
     Ok(builder.body(body)?)
@@ -103,12 +103,12 @@ async fn build_body_stream(mut asgi_app: CalledApplication) -> BoxBody<Bytes, Er
                 break
             }
             match asgi_app.receive_from().await {
-                Some(ASGISendEvent::HTTPResponseBody(msg)) => {
+                Ok(ASGISendEvent::HTTPResponseBody(msg)) => {
                     more_data = msg.more_body;
                     yield Ok(msg.body)
                 },
-                Some(msg) => yield Err(Error::unexpected_asgi_message(Box::new(msg))),
-                None => yield Err(Error::unexpected_shutdown(SRC::Application, "stopped while sending HTTP response body".into())),
+                Ok(msg) => yield Err(Error::unexpected_asgi_message(Box::new(msg))),
+                Err(e) => yield Err(Error::unexpected_shutdown(SRC::Application, format!("{e}").into())),
             }
         }
     };
