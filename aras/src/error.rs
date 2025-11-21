@@ -41,8 +41,8 @@ pub enum Error {
     #[error(transparent)]
     WebsocketError(#[from] fastwebsockets::WebSocketError),
 
-    #[error("Application returned, {msg:?}")]
-    ApplicationReturned { 
+    #[error("Application error: {msg:?}")]
+    ApplicationError { 
         msg: Box<dyn std::fmt::Debug + Send + Sync> 
     },
 
@@ -69,8 +69,8 @@ impl Error {
         Self::Custom(val.to_string())
     }
 
-    pub fn app_returned(msg: Box<dyn std::fmt::Debug + Send + Sync>) -> Self {
-        Self::ApplicationReturned { msg }
+    pub fn application_error(msg: Box<dyn std::fmt::Debug + Send + Sync>) -> Self {
+        Self::ApplicationError { msg }
     }
 
     pub fn application_not_running() -> Self {

@@ -29,7 +29,7 @@ impl<A: ASGIApplication> ApplicationWrapper<A> {
         tokio::task::spawn(async move {
             let out = if let Err(e) = self.inner.call(scope, self.receive, self.send).await {
                 error!("Application error: {e}");
-                Err(Error::custom(e.to_string()))
+                Err(Error::application_error(Box::new(format!("{e:?}"))))
             } else {
                 Ok(())
             };
@@ -105,8 +105,12 @@ impl CalledApplication {
     pub async fn send_to(&mut self, message: ASGIReceiveEvent) -> Result<()> {
         match self.result_handle.try_recv() {
             // Application stopped between the previous communication and this one
-            Ok(e) => {
-                return Err(Error::app_returned(Box::new(format!("{e:?}"))))
+            Ok(Ok(_)) => {
+                return Err(Error::application_not_running())
+            }
+            // Application returned an error between the previous communication and this one
+            Ok(Err(e)) => {
+                return Err(e)
             }
             // Application stopped before the previous communication
             Err(TryRecvError::Closed) => {
@@ -127,20 +131,21 @@ impl CalledApplication {
     /// returned. If not, this method will check if any more message can be received by checking if the application has returned.
     /// If the application has returned, an error is returned. If not, this method will wait for a new message to arrive.  
     pub async fn receive_from(&mut self) -> Result<ASGISendEvent> {
-        match (self.result_handle.try_recv(), self.receive_queue.is_empty()) {
-            // If there is a message, receive it
-            (_, false) => Ok(self.receive_queue.recv().await?),
+        // If there is a message, receive it
+        if !self.receive_queue.is_empty() {
+            return Ok(self.receive_queue.recv().await?);
+        }
+
+        // Check if the application is still running and if so, wait for a message
+        match self.result_handle.try_recv() {
             // There is no return message, but the app is still running, so wait for one
-            (Err(TryRecvError::Empty), true) => Ok(self.receive_queue.recv().await?),
-            // There is a return message, so we will not get any more messages
-            (Ok(app_returned), true) => {
-                match app_returned {
-                    Ok(m) => Err(Error::app_returned(Box::new(format!("application quit ok: {m:?}")))),
-                    Err(e) => Err(Error::app_returned(Box::new(format!("application quit with error: {e:?}")))),
-                }
-            },
+            Err(TryRecvError::Empty) => Ok(self.receive_queue.recv().await?),
+            // The app returned
+            Ok(Ok(_)) => Err(Error::application_not_running()),
+            // The app returned with an error
+            Ok(Err(e)) => Err(e),
             // There is no return message because the channel is closed or it was already received
-            (Err(TryRecvError::Closed), true) => {Err(Error::application_not_running())}
+            Err(TryRecvError::Closed) => Err(Error::application_not_running()),
         }
     }
 }
