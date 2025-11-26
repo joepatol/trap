@@ -65,7 +65,7 @@ fn generate_cancel_token() -> PyStopServerToken {
 /// What you probably want is to create a cancel token, run this function using `event_loop.run_until_complete`, and then when you want to stop the server call
 /// token.stop() from another thread or signal handler.
 ///
-/// The ARAS python package will do this ceremony for the user when using `aras.serve` hence we define `serve_python` as it's a lower level function, not intended
+/// The ARAS Python package will do this ceremony for the user when using `aras.serve`, hence we define `serve_python` as it's a lower level function not intended
 /// to be used directly by end users.
 fn serve_python<'a>(
     py: Python<'a>,

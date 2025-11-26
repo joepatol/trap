@@ -122,7 +122,7 @@ impl CalledApplication {
 
         if let Err(e) = self.send_queue.send(message).await {
             warn!("Failed to send message to app. {e}");
-            return Err(Error::custom(e.to_string()));
+            return Err(e.into());
         };
         Ok(())
     }
@@ -133,6 +133,7 @@ impl CalledApplication {
     pub async fn receive_from(&mut self) -> Result<ASGISendEvent> {
         // If there is a message, receive it
         if !self.receive_queue.is_empty() {
+            println!("Receiving message from queue");
             return Ok(self.receive_queue.recv().await?);
         }
 
@@ -140,12 +141,12 @@ impl CalledApplication {
         match self.result_handle.try_recv() {
             // There is no return message, but the app is still running, so wait for one
             Err(TryRecvError::Empty) => Ok(self.receive_queue.recv().await?),
+            // There is no return message because the channel is closed or it was already received
+            Err(TryRecvError::Closed) => Err(Error::application_not_running()),
             // The app returned
             Ok(Ok(_)) => Err(Error::application_not_running()),
             // The app returned with an error
             Ok(Err(e)) => Err(e),
-            // There is no return message because the channel is closed or it was already received
-            Err(TryRecvError::Closed) => Err(Error::application_not_running()),
         }
     }
 }
@@ -178,42 +179,104 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_lifespan_protocol_ok() {
+        let wrapper = ApplicationWrapper::from(LifespanProtocolApp {});
+        let mut called_app = wrapper.call(build_lifespan_scope());
+
+        // Send a startup event and make sure its successful
+        let send_result = called_app.send_to(ASGIReceiveEvent::new_lifespan_startup()).await;
+        assert!(send_result.is_ok());
+
+        // Receive the application response and ensure startup complete        
+        let startup_response = called_app.receive_from().await;
+        assert!(startup_response.is_ok());
+        let startup_msg = startup_response.unwrap();
+        assert!(matches!(startup_msg, ASGISendEvent::StartupComplete(_)));
+
+        // Send a shutdown event and make sure its successful
+        let send_result = called_app.send_to(ASGIReceiveEvent::new_lifespan_shutdown()).await;
+        assert!(send_result.is_ok());
+
+        // Receive the application response and ensure shutdown complete
+        let shutdown_response = called_app.receive_from().await;
+        assert!(shutdown_response.is_ok());
+        let shutdown_msg = shutdown_response.unwrap();
+        assert!(matches!(shutdown_msg, ASGISendEvent::ShutdownComplete(_)));
+    }
+
+    #[tokio::test]
     async fn test_send_is_error_after_close() {
         let wrapper = ApplicationWrapper::from(AssertSendErrorApp {});
         let mut called_app = wrapper.call(build_lifespan_scope());
         called_app.close();
+
+        // Send a message to the app to trigger the loop, then check for the result received from the app
         called_app
             .send_to(ASGIReceiveEvent::new_http_disconnect())
             .await
             .unwrap();
-
         let result = wait_for_application_output(&mut called_app).await;
-        assert!(result.is_err_and(|e| e.to_string() == "Disconnected client"));
+        
+        // The application should receive the disconnected client error
+        // So an application error should be returned containing the disconnected client message
+        assert!(result.is_err_and(|e| {
+            e.to_string() == "Application error: \"TestError(\\\"Disconnected client\\\")\""
+        }));
     }
 
     #[tokio::test]
-    async fn test_app_returns_error() {
+    async fn test_send_to_app_that_returned_an_error() {
         let wrapper = ApplicationWrapper::from(ErrorOnCallApp {});
         let mut called_app = wrapper.call(build_lifespan_scope());
 
-        let result = wait_for_application_output(&mut called_app).await;
-        assert!(result.is_err_and(|e| e.to_string() == "Immediate error"));
+        // Make sure that sending new messages will return an error
         assert!(called_app
             .send_to(ASGIReceiveEvent::new_http_disconnect())
             .await
-            .is_err_and(|e| { e.to_string() == "Attempted to send message to application that stopped" }));
+            .is_err_and(|e| e.to_string() == "Application is not running"));
     }
 
     #[tokio::test]
-    async fn test_app_returns_ok() {
+    async fn test_receive_from_app_that_returned_an_error() {
+        let wrapper = ApplicationWrapper::from(ErrorOnCallApp {});
+        let mut called_app = wrapper.call(build_lifespan_scope());
+
+        // Make sure that sending new messages will return an error
+        assert!(called_app
+            .receive_from()
+            .await
+            .is_err_and(|e| {
+                println!("{e:?}");
+                e.to_string() == "Application is not running"
+            }));
+    }
+
+    #[tokio::test]
+    async fn test_send_to_app_that_returned_ok() {
         let wrapper = ApplicationWrapper::from(ImmediateReturnApp {});
         let mut called_app = wrapper.call(build_lifespan_scope());
 
-        let result = wait_for_application_output(&mut called_app).await;
-        assert!(result.is_ok());
+        // Make sure that sending new messages will return an error
         assert!(called_app
             .send_to(ASGIReceiveEvent::new_http_disconnect())
             .await
-            .is_err_and(|e| { e.to_string() == "Attempted to send message to application that stopped" }));
+            .is_err_and(|e| { e.to_string() == "Application is not running" }));
+    }
+
+    #[tokio::test]
+    async fn test_receive_from_app_that_returned_ok() {
+        let wrapper = ApplicationWrapper::from(ImmediateReturnApp {});
+        let mut called_app = wrapper.call(build_lifespan_scope());
+
+        let _ = called_app.receive_from().await;
+        
+        // Make sure that sending new messages will return an error
+        assert!(called_app
+            .receive_from()
+            .await
+            .is_err_and(|e| {
+                println!("{e:?}");
+                e.to_string() == "Application is not running"
+            }));
     }
 }

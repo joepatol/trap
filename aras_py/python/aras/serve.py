@@ -1,6 +1,5 @@
 import asyncio
 import signal
-from typing import Any
 
 from .aras import serve_python, generate_cancel_token  # type: ignore
 from .types import LogLevel, ASGIApplication

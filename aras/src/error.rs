@@ -48,6 +48,9 @@ pub enum Error {
 
     #[error("Application is not running")]
     ApplicationNotRunning,
+
+    #[error(transparent)]
+    DisconnectedClient(#[from] SendError<ASGIReceiveEvent>)
 }
 
 pub enum UnexpectedShutdownSrc {
