@@ -133,7 +133,6 @@ impl CalledApplication {
     pub async fn receive_from(&mut self) -> Result<ASGISendEvent> {
         // If there is a message, receive it
         if !self.receive_queue.is_empty() {
-            println!("Receiving message from queue");
             return Ok(self.receive_queue.recv().await?);
         }
 

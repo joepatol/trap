@@ -2,6 +2,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use asgispec::prelude::*;
+use tower_http::compression::CompressionLayer;
 use derive_more::derive::Constructor;
 use hyper::server::conn::http1;
 use hyper_util::rt::{TokioIo, TokioTimer};
@@ -59,6 +60,9 @@ impl ArasServer {
             
             let svc = tower::ServiceBuilder::new()
                 .layer(LogLayer::new())
+                .load_shed()
+                // .buffer(1024)
+                .layer(CompressionLayer::new())
                 .concurrency_limit(self.concurrency_limit)
                 .timeout(self.timeout)
                 .layer(RequestBodyLimitLayer::new(self.body_limit))
