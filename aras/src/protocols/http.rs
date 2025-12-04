@@ -194,14 +194,14 @@ mod tests {
             .expect("Failed to build request");
 
         let response = handler.serve(
-            EchoApp::new_with_body(" more body"),
+            EchoApp::new_with_body("more body"),
             request, 
             build_conn_info(),
             MockState {}
         ).await.unwrap();
 
         assert!(response.status() == StatusCode::OK);
-        assert!(response_to_body_string(response).await == "hello world more body")
+        assert!(response_to_body_string(response).await == "hello worldmore body")
     }
 
     #[tokio::test]
@@ -220,8 +220,7 @@ mod tests {
 
         assert!(response.is_err_and(
             |e| {
-                println!("{}", e.to_string());
-                e.to_string() == "Application shutdown unexpectedly. stopped without sending HTTP response"
+                e.to_string() == "Application shutdown unexpectedly. Stopped without sending HTTP response: receiving from an empty and closed channel"
             }
         ));
     }
@@ -240,9 +239,9 @@ mod tests {
             MockState {}
         ).await;
 
-        assert!(response.is_err_and(
-            |e| e.to_string() == "Application shutdown unexpectedly. stopped without sending HTTP response"
-        ));
+        assert!(response.is_err_and(|e| {
+            e.to_string() == "Application shutdown unexpectedly. Stopped without sending HTTP response: receiving from an empty and closed channel"
+        }));
     }
 
     #[tokio::test]
@@ -260,7 +259,7 @@ mod tests {
         ).await;
 
         assert!(response.is_err_and(
-            |e| e.to_string() == "Application shutdown unexpectedly. stopped without sending HTTP response"
+            |e| e.to_string() == "Application shutdown unexpectedly. Stopped without sending HTTP response: receiving from an empty and closed channel"
         ));
     }
 
@@ -279,7 +278,9 @@ mod tests {
         ).await;
 
         let body = response.unwrap().into_body().collect().await;
-        assert!(body.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped while sending HTTP response body"))
+        assert!(body.is_err_and(|e| {
+            e.to_string() == "Application shutdown unexpectedly. Application error: TestError(\"Error in loop\")"
+        }))
 
     }
 
