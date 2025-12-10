@@ -8,6 +8,9 @@ use tokio::sync::oneshot::{self, error::TryRecvError, Receiver as OneshotReceive
 
 use crate::error::{Error, Result};
 
+const CHANNEL_SIZE: usize = 16;
+
+
 /// This struct wraps an `ASGIApplication` and exposes an API to interact with the application.
 /// Communication is done through 2 mpmc channels, for server-application and application-server communication.
 #[derive(Constructor)]
@@ -51,8 +54,8 @@ impl<A: ASGIApplication> From<A> for ApplicationWrapper<A> {
 
 impl<A: ASGIApplication> From<&A> for ApplicationWrapper<A> {
     fn from(application: &A) -> Self {
-        let (app_tx, server_rx) = channel::bounded(32);
-        let (server_tx, app_rx) = channel::bounded(32);
+        let (app_tx, server_rx) = channel::bounded(CHANNEL_SIZE);
+        let (server_tx, app_rx) = channel::bounded(CHANNEL_SIZE);
 
         let receive_closure = move || -> ReceiveFuture {
             let rxc = app_rx.clone();
@@ -167,6 +170,7 @@ mod tests {
         Scope::Lifespan(LifespanScope::new(ASGIScope::default(), Some(MockState {})))
     }
 
+    // Reads the output of the application
     async fn wait_for_application_output(app: &mut CalledApplication) -> Result<()> {
         loop {
             let result = app.result_handle.try_recv();
@@ -228,7 +232,7 @@ mod tests {
         let mut called_app = wrapper.call(build_lifespan_scope());
 
         // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
-        tokio::time::sleep(Duration::from_millis(1)).await;
+        tokio::task::yield_now().await;
 
         // Make sure that sending new messages will return an error
         let result = called_app
@@ -245,7 +249,7 @@ mod tests {
         let mut called_app = wrapper.call(build_lifespan_scope());
 
         // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
-        tokio::time::sleep(Duration::from_millis(1)).await;
+        tokio::task::yield_now().await;
 
         // Make sure that sending new messages will return an error
         let result = called_app
@@ -262,7 +266,7 @@ mod tests {
         let mut called_app = wrapper.call(build_lifespan_scope());
         
         // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
-        tokio::time::sleep(Duration::from_millis(1)).await;
+        tokio::task::yield_now().await;
 
         let result = called_app
             .send_to(ASGIReceiveEvent::new_http_disconnect())
@@ -278,7 +282,7 @@ mod tests {
         let mut called_app = wrapper.call(build_lifespan_scope());
 
         // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
-        tokio::time::sleep(Duration::from_millis(1)).await;
+        tokio::task::yield_now().await;
 
         let result = called_app.receive_from().await;
         
@@ -292,7 +296,8 @@ mod tests {
         let mut called_app = wrapper.call(build_lifespan_scope());
 
         // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
-        tokio::time::sleep(Duration::from_millis(1)).await;
+        tokio::task::yield_now().await;
+
         // First call returns the error
         let _ = called_app.receive_from().await;
         
@@ -309,7 +314,8 @@ mod tests {
         let mut called_app = wrapper.call(build_lifespan_scope());
 
         // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
-        tokio::time::sleep(Duration::from_millis(1)).await;
+        tokio::task::yield_now().await;
+
         // First call returns the error
         let _ = called_app.receive_from().await;
         
@@ -326,7 +332,8 @@ mod tests {
         let mut called_app = wrapper.call(build_lifespan_scope());
 
         // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
-        tokio::time::sleep(Duration::from_millis(1)).await;
+        tokio::task::yield_now().await;
+
         // First call returns the error
         let _ = called_app.send_to(ASGIReceiveEvent::new_lifespan_shutdown()).await;
         
@@ -343,7 +350,8 @@ mod tests {
         let mut called_app = wrapper.call(build_lifespan_scope());
 
         // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
-        tokio::time::sleep(Duration::from_millis(1)).await;
+        tokio::task::yield_now().await;
+
         // First call returns the error
         let _ = called_app.send_to(ASGIReceiveEvent::new_lifespan_shutdown()).await;
         

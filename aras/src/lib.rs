@@ -4,7 +4,6 @@ mod server;
 mod service;
 mod types;
 mod protocols;
-mod middlewares;
 
 #[cfg(test)]
 #[path ="../test_utils/applications.rs"]

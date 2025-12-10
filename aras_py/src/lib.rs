@@ -9,7 +9,6 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3_async_runtimes;
-use simplelog::*;
 use tokio::runtime::Handle;
 use tokio::sync::Semaphore;
 
@@ -19,15 +18,15 @@ mod wrappers;
 use tokio_util::sync::CancellationToken;
 use wrappers::{PyASGIAppWrapper, PyState, PyStopServerToken};
 
-fn get_log_level_filter(log_level: &str) -> LevelFilter {
+fn get_log_level_filter(log_level: &str) -> tracing::Level {
     match log_level {
-        "DEBUG" => LevelFilter::Debug,
-        "INFO" => LevelFilter::Info,
-        "ERROR" => LevelFilter::Error,
-        "OFF" => LevelFilter::Off,
-        "TRACE" => LevelFilter::Trace,
-        "WARN" => LevelFilter::Warn,
-        _ => LevelFilter::Info,
+        "DEBUG" => tracing::Level::DEBUG,
+        "INFO" => tracing::Level::INFO,
+        "ERROR" => tracing::Level::ERROR,
+        "OFF" => tracing::Level::ERROR,
+        "TRACE" => tracing::Level::TRACE,
+        "WARN" => tracing::Level::WARN,
+        _ => tracing::Level::INFO,
     }
 }
 
@@ -52,6 +51,8 @@ fn generate_cancel_token() -> PyStopServerToken {
     keep_alive = true,
     max_concurrency = None,
     max_size_kb = 1000000,
+    timeout_secs = 60,
+    rate_limit = (1000, 1),
 ))]
 /// Serves a Python ASGI application using the ARAS server.
 ///
@@ -78,9 +79,12 @@ fn serve_python<'a>(
     keep_alive: bool,
     max_concurrency: Option<usize>,
     max_size_kb: usize,
+    timeout_secs: u64,
+    rate_limit: (u64, u64),
 ) -> PyResult<Bound<'a, PyAny>> {
-    SimpleLogger::init(get_log_level_filter(log_level), Config::default())
-        .map_err(|e| PyRuntimeError::new_err(format!("Failed to start logger. {}", e)))?;
+    tracing_subscriber::fmt()
+        .with_max_level(get_log_level_filter(log_level))
+        .init();
 
     let state = PyState::new(PyDict::new(py).unbind());
     let cancel_token = token.get_cancel_token();
@@ -91,10 +95,11 @@ fn serve_python<'a>(
         addr.into(),
         port,
         keep_alive,
-        Duration::from_secs(60),
+        Duration::from_secs(timeout_secs),
         max_size_kb * 1000,
         max_concurrency.unwrap_or(Semaphore::MAX_PERMITS),
         cancel_token,
+        (rate_limit.0, Duration::from_secs(rate_limit.1)),
     );
 
     pyo3_async_runtimes::tokio::future_into_py_with_locals(py, task_locals, async move {
