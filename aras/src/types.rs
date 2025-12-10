@@ -42,7 +42,7 @@ pub type Response = HTTPResponse<BoxBody<Bytes, Error>>;
 /// Future type for all services
 pub type ServiceFuture = Pin<Box<dyn Future<Output = Result<Response>> + Send>>;
 
-impl ResponseStatus for Response {
+impl<T> ResponseStatus for HTTPResponse<T> {
     fn status_string(&self) -> String {
         format!("{} {}", self.status().as_str().to_owned(), self.status().canonical_reason().unwrap_or(""))
     }

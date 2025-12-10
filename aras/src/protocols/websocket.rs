@@ -66,7 +66,7 @@ async fn accept_websocket_connection(called_app: &mut CalledApplication) -> Resu
     called_app.send_to(ASGIReceiveEvent::new_websocket_connect()).await?;
 
     match called_app.receive_from().await {
-        Some(ASGISendEvent::WebsocketAccept(msg)) => {
+        Ok(ASGISendEvent::WebsocketAccept(msg)) => {
             let body = Full::new(Vec::<u8>::new().into())
                 .map_err(|never| match never {})
                 .boxed();
@@ -79,22 +79,22 @@ async fn accept_websocket_connection(called_app: &mut CalledApplication) -> Resu
             }
             Ok((true, builder.body(body)?))
         }
-        Some(ASGISendEvent::WebsocketClose(msg)) => {
+        Ok(ASGISendEvent::WebsocketClose(msg)) => {
             let body = Full::new(msg.reason.into()).map_err(|never| match never {}).boxed();
             builder = builder.status(StatusCode::FORBIDDEN);
             Ok((false, builder.body(body)?))
         }
-        None => Err(Error::unexpected_shutdown(
+        Err(e) => Err(Error::unexpected_shutdown(
             SRC::Application,
-            "shutdown during websocket handshake".into(),
+            format!("shutdown during websocket handshake: {e}").into(),
         )),
-        Some(msg) => Err(Error::unexpected_asgi_message(Box::new(msg))),
+        Ok(msg) => Err(Error::unexpected_asgi_message(Box::new(msg))),
     }
 }
 
 enum WsIteration<'a> {
     ReceiveClient(std::result::Result<fastwebsockets::Frame<'a>, fastwebsockets::WebSocketError>),
-    ReceiveApplication(Option<ASGISendEvent>),
+    ReceiveApplication(Result<ASGISendEvent>),
 }
 
 async fn run_accepted_websocket(called_app: &mut CalledApplication, upgraded_io: UpgradeFut) -> Result<()> {
@@ -129,17 +129,17 @@ async fn run_accepted_websocket(called_app: &mut CalledApplication, upgraded_io:
     called_app
         .send_to(ASGIReceiveEvent::new_websocket_disconnect(1005))
         .await?;
-    called_app.close().await;
+    called_app.close();
 
     Ok(())
 }
 
 async fn do_app_iteration(
-    msg: Option<ASGISendEvent>,
+    msg: Result<ASGISendEvent>,
     ws: Arc<Mutex<FragmentCollector<TokioIo<Upgraded>>>>,
 ) -> Result<bool> {
     match msg {
-        Some(ASGISendEvent::WebsocketSend(msg)) => {
+        Ok(ASGISendEvent::WebsocketSend(msg)) => {
             if let Some(data) = msg.text {
                 let payload = Payload::Owned(data.into_bytes());
                 let frame = Frame::new(true, OpCode::Text, None, payload);
@@ -152,22 +152,22 @@ async fn do_app_iteration(
             }
             Ok(true)
         }
-        Some(ASGISendEvent::WebsocketClose(msg)) => {
+        Ok(ASGISendEvent::WebsocketClose(msg)) => {
             let payload = Payload::Owned(msg.reason.into_bytes());
             let frame = Frame::new(true, OpCode::Close, None, payload);
             ws.lock().await.write_frame(frame).await?;
             Ok(false)
         }
-        None => {
+        Err(e) => {
             let payload = Payload::Owned(String::from("Internal server error").into_bytes());
             let frame = Frame::new(true, OpCode::Close, None, payload);
             ws.lock().await.write_frame(frame).await?;
             Err(Error::unexpected_shutdown(
                 SRC::Application,
-                "shutdown while open websocket connection".into(),
+                format!("shutdown while open websocket connection: {e}").into(),
             ))
         }
-        Some(msg) => {
+        Ok(msg) => {
             let payload = Payload::Owned(String::from("Internal server error").into_bytes());
             let frame = Frame::new(true, OpCode::Close, None, payload);
             ws.lock().await.write_frame(frame).await?;

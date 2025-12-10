@@ -1,7 +1,7 @@
 use asgispec::prelude::*;
 use asgispec::scope::LifespanScope;
 use derive_more::Constructor;
-use log::{error, info, warn};
+use log::{error, info, debug};
 
 use crate::application::{ApplicationWrapper, CalledApplication};
 use crate::error::{Error, Result, UnexpectedShutdownSrc as SRC};
@@ -17,15 +17,13 @@ impl LifespanHandler {
         info!("Application starting");
 
         let state_clone = state.clone();
-
         let application = ApplicationWrapper::from(&application);
         let mut called_app = application.call(Scope::Lifespan(LifespanScope::new(
             ASGIScope::default(),
             Some(state_clone),
         )));
-        let result = startup_loop(&mut called_app).await;
 
-        match result {
+        match startup_loop(&mut called_app).await {
             Ok(use_lifespan) => {
                 info!("Application startup complete");
                 Ok(StartedLifespanHandler::new(called_app, use_lifespan))
@@ -66,16 +64,15 @@ impl StartedLifespanHandler {
 }
 
 async fn startup_loop(application: &mut CalledApplication) -> Result<bool> {
-    application.send_to(ASGIReceiveEvent::new_lifespan_startup()).await?;
+    if let Err(e) = application.send_to(ASGIReceiveEvent::new_lifespan_startup()).await {
+        debug!("Lifespan protocol appears unsupported: {e}");
+        return Ok(false)
+    }
     match application.receive_from().await {
-        Some(ASGISendEvent::StartupComplete(_)) => Ok(true),
-        Some(ASGISendEvent::StartupFailed(event)) => Err(Error::custom(event.message)),
-        None => Err(Error::unexpected_shutdown(
-            SRC::Application,
-            "stopped during startup".into(),
-        )),
+        Ok(ASGISendEvent::StartupComplete(_)) => Ok(true),
+        Ok(ASGISendEvent::StartupFailed(event)) => Err(Error::custom(event.message)),
         _ => {
-            warn!("Lifespan protocol appears unsupported");
+            debug!("Lifespan protocol appears unsupported");
             Ok(false)
         }
     }
@@ -84,12 +81,12 @@ async fn startup_loop(application: &mut CalledApplication) -> Result<bool> {
 async fn shutdown_loop(mut application: CalledApplication) -> Result<()> {
     application.send_to(ASGIReceiveEvent::new_lifespan_shutdown()).await?;
     match application.receive_from().await {
-        Some(ASGISendEvent::ShutdownComplete(_)) => Ok(()),
-        Some(ASGISendEvent::ShutdownFailed(event)) => Err(Error::custom(event.message)),
-        Some(msg) => Err(Error::unexpected_asgi_message(Box::new(msg))),
-        None => Err(Error::unexpected_shutdown(
+        Ok(ASGISendEvent::ShutdownComplete(_)) => Ok(()),
+        Ok(ASGISendEvent::ShutdownFailed(event)) => Err(Error::custom(event.message)),
+        Ok(msg) => Err(Error::unexpected_asgi_message(Box::new(msg))),
+        Err(e) => Err(Error::unexpected_shutdown(
             SRC::Application,
-            "stopped during shutdown".into(),
+            format!("{e}").into(),
         )),
     }
 }

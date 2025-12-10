@@ -11,6 +11,20 @@ async def test_healthy(httpx_client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_read_items(httpx_client: AsyncClient) -> None:
+    response = await httpx_client.get("/api/basic/items/")
+    assert response.status_code == 200
+    assert response.json() == [{"item_name":"Foo"}, {"item_id": "foo"}, {"item_id": "bar"}]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_read_items_query(httpx_client: AsyncClient) -> None:
+    response = await httpx_client.get("/api/basic/items?skip=1")
+    assert response.status_code == 200
+    assert response.json() == [{"item_id": "foo"}, {"item_id": "bar"}]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_not_found(httpx_client: AsyncClient) -> None:
     response = await httpx_client.get("/does_not_exist")
     assert response.status_code == 404

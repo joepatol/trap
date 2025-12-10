@@ -2,6 +2,8 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use asgispec::prelude::*;
+use tower_http::ServiceBuilderExt;
+use tower_http::compression::CompressionLayer;
 use derive_more::derive::Constructor;
 use hyper::server::conn::http1;
 use hyper_util::rt::{TokioIo, TokioTimer};
@@ -9,12 +11,14 @@ use hyper_util::service::TowerToHyperService;
 use log::{error, info};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
+use tower_http::trace::TraceLayer;
 
-use super::middlewares::*;
+use crate::types::ResponseStatus;
+
 use super::service::ArasASGIService;
 use super::error::{Error, Result, UnexpectedShutdownSrc as SRC};
 use super::protocols::LifespanHandler;
-use super::types::ConnectionInfo;
+use super::types::{ConnectionInfo, Request};
 
 /// The Aras server implementation
 #[derive(Constructor, Clone)]
@@ -32,7 +36,11 @@ pub struct ArasServer {
     /// Max number of in-flight requests
     concurrency_limit: usize,
     /// Cancellation token to stop the server
-    cancel_token: CancellationToken
+    cancel_token: CancellationToken,
+    /// Rate limit
+    rate_limit: (u64, Duration),
+    /// Maximum buffer size for requests
+    buffer_size: usize,
 }
 
 impl ArasServer {
@@ -58,28 +66,34 @@ impl ArasServer {
             info!("Connecting new client {client}");
             
             let svc = tower::ServiceBuilder::new()
-                .layer(LogLayer::new())
+                .layer(
+                    TraceLayer::new_for_http()
+                        .on_request(|req: &Request, _span: &tracing::Span| {
+                            info!("Processing request: {} {}", req.method(), req.uri().path())
+                        })
+                        .on_response(|res: &http::Response<_>, _latency: Duration, _span: &tracing::Span| {
+                            info!("Response sent: {}", res.status_string())
+                        })
+                )
+                .request_body_limit(self.body_limit)
+                .layer(CompressionLayer::new())
+                .buffer(self.buffer_size)
+                .rate_limit(self.rate_limit.0, self.rate_limit.1)
                 .concurrency_limit(self.concurrency_limit)
+                .load_shed()
                 .timeout(self.timeout)
-                .layer(RequestBodyLimitLayer::new(self.body_limit))
                 .service(ArasASGIService::new(application.clone(), state.clone(), conn_info));
-            let svc = TowerToHyperService::new(svc);
 
-            tokio::task::spawn(async move {
-                if let Err(err) = http1::Builder::new()
+            let svc = TowerToHyperService::new(svc);
+            let conn = http1::Builder::new()
                     .timer(TokioTimer::new())
                     .keep_alive(keep_alive)
+                    .auto_date_header(true)
                     .serve_connection(io, svc)
-                    .with_upgrades()
-                    .await
-                {
-                    if err.is_closed() || err.is_timeout() {
-                        info!("Disconnected client {client}");
-                    } else {
-                        error!("Error serving connection: {}", err);
-                    };
-                }
-            });
+                    .with_upgrades();
+            
+            // TODO: What if this future errors? Any async block results in higher order lifetime error
+            tokio::task::spawn(conn);
         }
     }
 }

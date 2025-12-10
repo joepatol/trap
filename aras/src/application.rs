@@ -8,6 +8,9 @@ use tokio::sync::oneshot::{self, error::TryRecvError, Receiver as OneshotReceive
 
 use crate::error::{Error, Result};
 
+const CHANNEL_SIZE: usize = 16;
+
+
 /// This struct wraps an `ASGIApplication` and exposes an API to interact with the application.
 /// Communication is done through 2 mpmc channels, for server-application and application-server communication.
 #[derive(Constructor)]
@@ -29,7 +32,7 @@ impl<A: ASGIApplication> ApplicationWrapper<A> {
         tokio::task::spawn(async move {
             let out = if let Err(e) = self.inner.call(scope, self.receive, self.send).await {
                 error!("Application error: {e}");
-                Err(Error::custom(e.to_string()))
+                Err(Error::application_error(Box::new(format!("{e:?}"))))
             } else {
                 Ok(())
             };
@@ -51,8 +54,8 @@ impl<A: ASGIApplication> From<A> for ApplicationWrapper<A> {
 
 impl<A: ASGIApplication> From<&A> for ApplicationWrapper<A> {
     fn from(application: &A) -> Self {
-        let (app_tx, server_rx) = channel::bounded(32);
-        let (server_tx, app_rx) = channel::bounded(32);
+        let (app_tx, server_rx) = channel::bounded(CHANNEL_SIZE);
+        let (server_tx, app_rx) = channel::bounded(CHANNEL_SIZE);
 
         let receive_closure = move || -> ReceiveFuture {
             let rxc = app_rx.clone();
@@ -96,42 +99,58 @@ pub(crate) struct CalledApplication {
 impl CalledApplication {
     /// Close communication with the application, by closing the receive queue.
     /// This prevents any new message to be send to the application.
-    pub async fn close(&mut self) {
+    pub fn close(&mut self) {
         self.receive_queue.close();
     }
 
     /// Send a message to the application. This method will first check if the application is still
     /// running and return an error if not.
-    /// Sending the message can also fail if the internal channel is closed
     pub async fn send_to(&mut self, message: ASGIReceiveEvent) -> Result<()> {
         match self.result_handle.try_recv() {
-            Ok(_) => {
-                return Err(Error::custom(
-                    "Attempted to send message to application that has finished",
-                ))
+            // Application stopped between the previous communication and this one
+            Ok(Ok(_)) => {
+                return Err(Error::application_not_running())
             }
+            // Application returned an error between the previous communication and this one
+            Ok(Err(e)) => {
+                println!("Application returned an error: {e}");
+                return Err(e)
+            }
+            // Application stopped before the previous communication
             Err(TryRecvError::Closed) => {
-                return Err(Error::custom("Attempted to send message to application that stopped"))
+                return Err(Error::application_not_running())
             }
+            // Application is still running
             Err(TryRecvError::Empty) => {}
         };
 
         if let Err(e) = self.send_queue.send(message).await {
             warn!("Failed to send message to app. {e}");
-            return Err(Error::custom(e.to_string()));
+            return Err(e.into());
         };
         Ok(())
     }
 
-    /// Receive a message from the application. This method first checks if any message can be received
-    /// (now or by waiting for one). If no message can be received, or receiving returns an error, `None` is returned.
-    pub async fn receive_from(&mut self) -> Option<ASGISendEvent> {
-        match (self.result_handle.try_recv(), self.receive_queue.is_empty()) {
-            (Ok(_), true) | (Err(TryRecvError::Closed), true) => return None,
-            _ => {}
-        };
+    /// Receive a message from the application. If a message is on the queue it will immediately be received and
+    /// returned. If not, this method will check if any more message can be received by checking if the application has returned.
+    /// If the application has returned, an error is returned. If not, this method will wait for a new message to arrive.  
+    pub async fn receive_from(&mut self) -> Result<ASGISendEvent> {
+        // If there is a message, receive it
+        if !self.receive_queue.is_empty() {
+            return Ok(self.receive_queue.recv().await?);
+        }
 
-        self.receive_queue.recv().await.ok()
+        // Check if the application is still running and if so, wait for a message
+        match self.result_handle.try_recv() {
+            // There is no return message, but the app is still running, so wait for one
+            Err(TryRecvError::Empty) => Ok(self.receive_queue.recv().await?),
+            // There is no return message because the channel is closed or it was already received
+            Err(TryRecvError::Closed) => Err(Error::application_not_running()),
+            // The app returned
+            Ok(Ok(_)) => Err(Error::application_not_running()),
+            // The app returned with an error
+            Ok(Err(e)) => Err(e),
+        }
     }
 }
 
@@ -151,6 +170,7 @@ mod tests {
         Scope::Lifespan(LifespanScope::new(ASGIScope::default(), Some(MockState {})))
     }
 
+    // Reads the output of the application
     async fn wait_for_application_output(app: &mut CalledApplication) -> Result<()> {
         loop {
             let result = app.result_handle.try_recv();
@@ -163,42 +183,182 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_lifespan_protocol_ok() {
+        let wrapper = ApplicationWrapper::from(LifespanProtocolApp {});
+        let mut called_app = wrapper.call(build_lifespan_scope());
+
+        // Send a startup event and make sure its successful
+        let send_result = called_app.send_to(ASGIReceiveEvent::new_lifespan_startup()).await;
+        assert!(send_result.is_ok());
+
+        // Receive the application response and ensure startup complete        
+        let startup_response = called_app.receive_from().await;
+        assert!(startup_response.is_ok());
+        let startup_msg = startup_response.unwrap();
+        assert!(matches!(startup_msg, ASGISendEvent::StartupComplete(_)));
+
+        // Send a shutdown event and make sure its successful
+        let send_result = called_app.send_to(ASGIReceiveEvent::new_lifespan_shutdown()).await;
+        assert!(send_result.is_ok());
+
+        // Receive the application response and ensure shutdown complete
+        let shutdown_response = called_app.receive_from().await;
+        assert!(shutdown_response.is_ok());
+        let shutdown_msg = shutdown_response.unwrap();
+        assert!(matches!(shutdown_msg, ASGISendEvent::ShutdownComplete(_)));
+    }
+
+    #[tokio::test]
     async fn test_send_is_error_after_close() {
         let wrapper = ApplicationWrapper::from(AssertSendErrorApp {});
         let mut called_app = wrapper.call(build_lifespan_scope());
-        called_app.close().await;
+        called_app.close();
+
+        // Send a message to the app to trigger the loop, then check for the result received from the app
         called_app
             .send_to(ASGIReceiveEvent::new_http_disconnect())
             .await
             .unwrap();
-
         let result = wait_for_application_output(&mut called_app).await;
-        assert!(result.is_err_and(|e| e.to_string() == "Disconnected client"));
+        
+        // The application should receive the disconnected client error
+        // So an application error should be returned containing the disconnected client message
+        assert!(result.is_err_and(|e| e.to_string() == "Application error: TestError(\"Disconnected client\")"));
     }
 
     #[tokio::test]
-    async fn test_app_returns_error() {
+    async fn test_send_to_app_that_returned_an_error() {
         let wrapper = ApplicationWrapper::from(ErrorOnCallApp {});
         let mut called_app = wrapper.call(build_lifespan_scope());
 
-        let result = wait_for_application_output(&mut called_app).await;
-        assert!(result.is_err_and(|e| e.to_string() == "Immediate error"));
-        assert!(called_app
+        // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
+        tokio::task::yield_now().await;
+
+        // Make sure that sending new messages will return an error
+        let result = called_app
             .send_to(ASGIReceiveEvent::new_http_disconnect())
-            .await
-            .is_err_and(|e| { e.to_string() == "Attempted to send message to application that stopped" }));
+            .await;
+
+        // Make sure that sending new messages will return an error
+        assert!(result.is_err_and(|e| e.to_string() == "Application error: TestError(\"Immediate error\")"));
     }
 
     #[tokio::test]
-    async fn test_app_returns_ok() {
+    async fn test_receive_from_app_that_returned_an_error() {
+        let wrapper = ApplicationWrapper::from(ErrorOnCallApp {});
+        let mut called_app = wrapper.call(build_lifespan_scope());
+
+        // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
+        tokio::task::yield_now().await;
+
+        // Make sure that sending new messages will return an error
+        let result = called_app
+            .receive_from()
+            .await;
+
+        // Make sure that sending new messages will return an error
+        assert!(result.is_err_and(|e| e.to_string() == "Application error: TestError(\"Immediate error\")"));
+    }
+
+    #[tokio::test]
+    async fn test_send_to_app_that_returned_ok() {
+        let wrapper = ApplicationWrapper::from(ImmediateReturnApp {});
+        let mut called_app = wrapper.call(build_lifespan_scope());
+        
+        // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
+        tokio::task::yield_now().await;
+
+        let result = called_app
+            .send_to(ASGIReceiveEvent::new_http_disconnect())
+            .await;
+
+        // Make sure that sending new messages will return an error
+        assert!(result.is_err_and(|e| e.to_string() == "Application is not running"));
+    }
+
+    #[tokio::test]
+    async fn test_receive_from_app_that_returned_ok() {
         let wrapper = ApplicationWrapper::from(ImmediateReturnApp {});
         let mut called_app = wrapper.call(build_lifespan_scope());
 
-        let result = wait_for_application_output(&mut called_app).await;
-        assert!(result.is_ok());
-        assert!(called_app
-            .send_to(ASGIReceiveEvent::new_http_disconnect())
-            .await
-            .is_err_and(|e| { e.to_string() == "Attempted to send message to application that stopped" }));
+        // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
+        tokio::task::yield_now().await;
+
+        let result = called_app.receive_from().await;
+        
+        // Make sure that sending new messages will return an error
+        assert!(result.is_err_and(|e| e.to_string() == "Application is not running"));
+    }
+
+    #[tokio::test]
+    async fn test_receive_from_app_keeps_returning_not_running_after_err_result_received() {
+        let wrapper = ApplicationWrapper::from(ErrorOnCallApp {});
+        let mut called_app = wrapper.call(build_lifespan_scope());
+
+        // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
+        tokio::task::yield_now().await;
+
+        // First call returns the error
+        let _ = called_app.receive_from().await;
+        
+        // Now it should keep returning the not running error
+        let result = called_app.receive_from().await;
+
+        // Make sure that sending new messages will return an error
+        assert!(result.is_err_and(|e| e.to_string() == "Application is not running"));
+    }
+
+    #[tokio::test]
+    async fn test_receive_from_app_keeps_returning_not_running_after_ok_result_received() {
+        let wrapper = ApplicationWrapper::from(ImmediateReturnApp {});
+        let mut called_app = wrapper.call(build_lifespan_scope());
+
+        // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
+        tokio::task::yield_now().await;
+
+        // First call returns the error
+        let _ = called_app.receive_from().await;
+        
+        // Now it should keep returning the not running error
+        let result = called_app.receive_from().await;
+
+        // Make sure that sending new messages will return an error
+        assert!(result.is_err_and(|e| e.to_string() == "Application is not running"));
+    }
+
+    #[tokio::test]
+    async fn test_send_to_app_keeps_returning_not_running_after_err_result_received() {
+        let wrapper = ApplicationWrapper::from(ErrorOnCallApp {});
+        let mut called_app = wrapper.call(build_lifespan_scope());
+
+        // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
+        tokio::task::yield_now().await;
+
+        // First call returns the error
+        let _ = called_app.send_to(ASGIReceiveEvent::new_lifespan_shutdown()).await;
+        
+        // Now it should keep returning the not running error
+        let result = called_app.receive_from().await;
+
+        // Make sure that sending new messages will return an error
+        assert!(result.is_err_and(|e| e.to_string() == "Application is not running"));
+    }
+
+    #[tokio::test]
+    async fn test_send_to_app_keeps_returning_not_running_after_ok_result_received() {
+        let wrapper = ApplicationWrapper::from(ImmediateReturnApp {});
+        let mut called_app = wrapper.call(build_lifespan_scope());
+
+        // Because `call` is not async, we need to give the tokio event loop a chance to actually switch tasks
+        tokio::task::yield_now().await;
+
+        // First call returns the error
+        let _ = called_app.send_to(ASGIReceiveEvent::new_lifespan_shutdown()).await;
+        
+        // Now it should keep returning the not running error
+        let result = called_app.receive_from().await;
+
+        // Make sure that sending new messages will return an error
+        assert!(result.is_err_and(|e| e.to_string() == "Application is not running"));
     }
 }

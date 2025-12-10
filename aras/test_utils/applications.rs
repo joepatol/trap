@@ -1,9 +1,23 @@
 // ASGI Applications used for testing
 use asgispec::prelude::*;
+use asgispec::scope::LifespanScope;
 
 // Mocks
 #[derive(Debug)]
 pub struct TestError(String);
+
+impl From<&str> for TestError {
+    fn from(value: &str) -> Self {
+        Self { 0: value.to_string() }
+    }
+}
+
+impl From<String> for TestError {
+    fn from(value: String) -> Self {
+        Self { 0: value }
+    }
+}
+
 
 impl std::fmt::Display for TestError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -30,6 +44,69 @@ impl std::fmt::Display for MockState {
 }
 
 // Actual applications
+
+#[derive(Clone)]
+/// This application runs the complete lifespan protocol
+/// It will respond to startup and shutdown events accordingly.
+pub struct LifespanProtocolApp;
+
+impl LifespanProtocolApp {
+    async fn run(&self, _: LifespanScope<MockState>, receive: ReceiveFn, send: SendFn) -> std::result::Result<(), TestError> {
+        let mut quit;
+        loop {
+            // Receive message and get the response
+            let received_message = self.receive_message(&receive).await;
+            let response = self.get_response(&received_message);
+            
+
+            // If shutdown complete, quit
+            if let ASGISendEvent::ShutdownComplete(_) = response {
+                quit = true;
+            } else {
+                quit = false;
+            }
+
+            // Send response
+            if let Err(e) = (send)(response).await {
+                return Err(TestError::from(format!("Failed to send message: {e}")))
+            };
+            
+            if quit {
+                break;
+            }
+        };
+
+        Ok(())
+    }
+    
+    async fn receive_message(&self, receive: &ReceiveFn) -> ASGIReceiveEvent {
+        let msg = (receive)().await;
+        msg
+    }
+
+    fn get_response(&self, msg: &ASGIReceiveEvent) -> ASGISendEvent {
+        match msg {
+            ASGIReceiveEvent::Startup(_) => ASGISendEvent::new_startup_complete(),
+            ASGIReceiveEvent::Shutdown(_) => ASGISendEvent::new_shutdown_complete(),
+            other => panic!("Unexpected message received {other:?}"),
+        }
+    }
+}
+
+impl ASGIApplication for LifespanProtocolApp {
+    type Error = TestError;
+    type State = MockState;
+    
+    async fn call(&self, scope: Scope<Self::State>, receive: ReceiveFn, send: SendFn) -> std::result::Result<(), Self::Error> {
+        match scope {
+            Scope::Lifespan(internal) => {
+                self.run(internal, receive, send).await
+            },
+            _ => Err(TestError::from("Invalid scope provided")),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct EchoApp {
     extra_body: Option<String>,

@@ -1,56 +1,11 @@
 # A Rust ASGI Server
 
-Work in progress!
+Supports ASGI 3.0 with spec version 2.4
 
-- Supports http 1.1
-- Supports lifespan
-- Supports websockets
-
-## Usage
-
-In code
-
-```python
-import aras
-from fastapi import FastAPI
-
-
-app = FastAPI()
-
-
-@app.get("/health_check")
-async def root():
-    return {"message": "looking good!"}
-
-
-if __name__ == "__main__":
-    aras.serve(app)
-```
-
-Or use through CLI
-
-```bash
-aras serve my_app.main:app
-```
+- Supports http 1.1 protocol
+- Supports lifespan protocol
+- Supports websockets protocol
 
 # Testing
 
-To run Rust tests, run `cargo test`.
-
-For Python tests, make sure to build the ARAS docker image.
-Run from the project root:
-
-```bash
-docker build . -t aras:latest
-```
-
-Now run Python tests using `pytest pytests`
-
-To do:
-
-- Cancellation from docker quits python event loop (exiting probably should be done with channel)
-- support extensions
-- add debug logs
-- timeout on waiting from message from ASGI app (what if more_body == true and its never send?) -> should be solved by timeout layer
-- Store bytes in `Bytes` iso `Vec`
-- Should max_size be an option type?
+run `cargo test`.

@@ -4,7 +4,7 @@ import sys
 
 import click
 from .types import LogLevel
-from .serve import serve
+from .serve import serve as serve_app
 
 
 @click.group()
@@ -54,6 +54,27 @@ def cli() -> None:
     help="Set the max size of a request body",
     show_default=True,
 )
+@click.option(
+    "--timeout-secs",
+    type=int,
+    default=60,
+    help="Set the request timeout in seconds",
+    show_default=True,
+)
+@click.option(
+    "--rate-limit",
+    type=(int, int),
+    default=(1000, 1),
+    help="Set the rate limit as (requests, seconds)",
+    show_default=True,
+)
+@click.option(
+    "--buffer-size",
+    type=int,
+    default=1024,
+    help="Set the max number of requests that can be waiting",
+    show_default=True,
+)
 def serve(
     application: str,
     host: str,
@@ -62,6 +83,9 @@ def serve(
     no_keep_alive: bool,
     max_concurrency: int | None,
     max_size_kb: int,
+    timeout_secs: int,
+    rate_limit: tuple[int, int],
+    buffer_size: int = 1024,
 ) -> None:
     # Insert current working directory to sys.path to make sure the dynamic import,
     # which is referenced from the cwd, works correctly.
@@ -78,12 +102,15 @@ def serve(
             "Make sure you provided a valid path from the current working directory."
         ) from exc
     
-    serve(
+    serve_app(
         loaded_app,
         host,
         port,
         log_level,
         not no_keep_alive,
         max_concurrency,
-        max_size_kb,    
+        max_size_kb,
+        timeout_secs,
+        rate_limit,
+        buffer_size,
     )
