@@ -66,7 +66,6 @@ impl ArasServer {
             info!("Connecting new client {client}");
             
             let svc = tower::ServiceBuilder::new()
-                .buffer(self.buffer_size)
                 .layer(
                     TraceLayer::new_for_http()
                         .on_request(|req: &Request, _span: &tracing::Span| {
@@ -76,18 +75,20 @@ impl ArasServer {
                             info!("Response sent: {}", res.status_string())
                         })
                 )
+                .request_body_limit(self.body_limit)
+                .layer(CompressionLayer::new())
+                .buffer(self.buffer_size)
                 .rate_limit(self.rate_limit.0, self.rate_limit.1)
                 .concurrency_limit(self.concurrency_limit)
                 .load_shed()
-                .layer(CompressionLayer::new())
                 .timeout(self.timeout)
-                .request_body_limit(self.body_limit)
                 .service(ArasASGIService::new(application.clone(), state.clone(), conn_info));
 
             let svc = TowerToHyperService::new(svc);
             let conn = http1::Builder::new()
                     .timer(TokioTimer::new())
                     .keep_alive(keep_alive)
+                    .auto_date_header(true)
                     .serve_connection(io, svc)
                     .with_upgrades();
             

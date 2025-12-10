@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::task::{Poll, Context};
 
 use asgispec::prelude::*;
 use derive_more::derive::Constructor;
@@ -9,7 +10,7 @@ use log::error;
 use tower::Service;
 use std::future::Future;
 
-use crate::error::{Result, Error};
+use crate::error::{Result as ArasResult, Error};
 use crate::protocols::{HTTPHandler, WebsocketHandler};
 use crate::types::{ServiceFuture, ConnectionInfo, Response};
 
@@ -32,7 +33,7 @@ where
     type Response = Response;
     type Future = ServiceFuture;
 
-    fn poll_ready(&mut self, _: &mut std::task::Context<'_>) -> std::task::Poll<std::result::Result<(), Self::Error>> {
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         std::task::Poll::Ready(Ok(()))
     }
 
@@ -59,7 +60,7 @@ where
     }
 }
 
-async fn handle_error(fut: impl Future<Output = Result<Response>>) -> Result<Response> {
+async fn handle_error(fut: impl Future<Output = ArasResult<Response>>) -> ArasResult<Response> {
     match fut.await {
         Ok(response) => Ok(response),
         Err(error) => {
