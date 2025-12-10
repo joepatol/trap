@@ -66,6 +66,7 @@ impl ArasServer {
             info!("Connecting new client {client}");
             
             let svc = tower::ServiceBuilder::new()
+                .buffer(self.buffer_size)
                 .layer(
                     TraceLayer::new_for_http()
                         .on_request(|req: &Request, _span: &tracing::Span| {
@@ -75,7 +76,6 @@ impl ArasServer {
                             info!("Response sent: {}", res.status_string())
                         })
                 )
-                .buffer(self.buffer_size)
                 .rate_limit(self.rate_limit.0, self.rate_limit.1)
                 .concurrency_limit(self.concurrency_limit)
                 .load_shed()

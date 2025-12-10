@@ -5,7 +5,7 @@ use std::time::Duration;
 use aras_core::ArasServer;
 use asgispec::prelude::*;
 use log::info;
-use pyo3::{buffer, exceptions::PyRuntimeError};
+use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3_async_runtimes;
