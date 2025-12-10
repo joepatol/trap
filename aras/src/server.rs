@@ -39,6 +39,8 @@ pub struct ArasServer {
     cancel_token: CancellationToken,
     /// Rate limit
     rate_limit: (u64, Duration),
+    /// Maximum buffer size for requests
+    buffer_size: usize,
 }
 
 impl ArasServer {
@@ -73,7 +75,7 @@ impl ArasServer {
                             info!("Response sent: {}", res.status_string())
                         })
                 )
-                .buffer(1024)
+                .buffer(self.buffer_size)
                 .rate_limit(self.rate_limit.0, self.rate_limit.1)
                 .concurrency_limit(self.concurrency_limit)
                 .load_shed()

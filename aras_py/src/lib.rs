@@ -5,7 +5,7 @@ use std::time::Duration;
 use aras_core::ArasServer;
 use asgispec::prelude::*;
 use log::info;
-use pyo3::exceptions::PyRuntimeError;
+use pyo3::{buffer, exceptions::PyRuntimeError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3_async_runtimes;
@@ -53,6 +53,7 @@ fn generate_cancel_token() -> PyStopServerToken {
     max_size_kb = 1000000,
     timeout_secs = 60,
     rate_limit = (1000, 1),
+    buffer_size = 1024,
 ))]
 /// Serves a Python ASGI application using the ARAS server.
 ///
@@ -81,6 +82,7 @@ fn serve_python<'a>(
     max_size_kb: usize,
     timeout_secs: u64,
     rate_limit: (u64, u64),
+    buffer_size: usize,
 ) -> PyResult<Bound<'a, PyAny>> {
     tracing_subscriber::fmt()
         .with_max_level(get_log_level_filter(log_level))
@@ -100,6 +102,7 @@ fn serve_python<'a>(
         max_concurrency.unwrap_or(Semaphore::MAX_PERMITS),
         cancel_token,
         (rate_limit.0, Duration::from_secs(rate_limit.1)),
+        buffer_size,
     );
 
     pyo3_async_runtimes::tokio::future_into_py_with_locals(py, task_locals, async move {

@@ -15,4 +15,7 @@ def serve_python(
     log_leveL: LogLevel = "INFO",
     max_concurrency: int | None = None,
     max_size_kb: int = 1_000_000,
+    timeout_secs: int = 60,
+    rate_limit: tuple[int, int] = (1000, 1),
+    buffer_size: int = 1024,
 ) -> Awaitable[None]: ...
