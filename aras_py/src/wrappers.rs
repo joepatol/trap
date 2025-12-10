@@ -5,9 +5,9 @@ use std::{
 
 use aras_core::ArasError;
 use asgispec::prelude::*;
-use log::{debug, error};
+use log::error;
 use pyo3::{
-    exceptions::{PyRuntimeError, PyValueError},
+    exceptions::{PyIOError, PyValueError},
     prelude::*,
     types::{PyDict, PyMapping, PyString},
 };
@@ -34,7 +34,6 @@ impl PyStopServerToken {
 #[pymethods]
 impl PyStopServerToken {
     pub fn stop(&self) {
-        debug!("Stopping server via StopServerToken");
         self.token.cancel();
     }
 }
@@ -183,7 +182,6 @@ impl<'py> IntoPyObject<'py> for PyScope {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> std::result::Result<Self::Output, Self::Error> {
-        debug!("Sending scope: {}", self.0);
         match self.0 {
             Scope::HTTP(scope) => convert::http_scope_into_py(py, scope),
             Scope::Lifespan(scope) => convert::lifespan_scope_into_py(py, scope),
@@ -206,18 +204,10 @@ impl PySend {
 #[pymethods]
 impl PySend {
     async fn __call__(&self, message: Py<PyDict>) -> PyResult<()> {
-        debug!("Send: {}", message);
         let converted_message: PyASGISendEvent = Python::with_gil(|py: Python| message.extract(py))?;
         (self.send)(converted_message.0)
             .await
-            // TODO: how to check error type?
-            // .map_err(|e| {
-            //     match e {
-            //         Error::DisconnectedClient(e) => PyIOError::new_err(format!("{e}")),
-            //         e => PyRuntimeError::new_err(format!("Error in ASGI 'send': {}", e))
-            //     }
-            // })
-            .map_err(|e| PyRuntimeError::new_err(format!("Error in ASGI 'send': {}", e)))?;
+            .map_err(|e| PyIOError::new_err(format!("{e}")))?;
         Ok(())
     }
 }
@@ -237,7 +227,6 @@ impl PyReceive {
 impl PyReceive {
     async fn __call__(&self) -> PyResult<Py<PyDict>> {
         let received = (self.receive)().await;
-        debug!("Receive: {}", &received);
         Python::with_gil(|py| PyASGIReceiveEvent::new(received).into_pyobject(py).map(|v| v.unbind()))
     }
 }
