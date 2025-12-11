@@ -21,7 +21,7 @@ use super::error::{Error, Result, UnexpectedShutdownSrc as SRC};
 use super::protocols::LifespanHandler;
 use super::types::{ConnectionInfo, Request};
 
-async fn handle_hyper_conn_error(conn: impl Future<Output = std::result::Result<(), hyper::Error>>) {
+async fn log_hyper_error(conn: impl Future<Output = std::result::Result<(), hyper::Error>>) {
     if let Err(e) = conn.await {
         if e.is_closed() | e.is_canceled() {
             error!("Connection closed by client: {}", e);
@@ -105,7 +105,7 @@ impl ArasServer {
                     .serve_connection(io, svc)
                     .with_upgrades();
 
-            let handled = handle_hyper_conn_error(conn);
+            let handled = log_hyper_error(conn);
             tokio::task::spawn(handled);
         }
     }
