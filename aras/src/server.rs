@@ -23,7 +23,11 @@ use super::types::{ConnectionInfo, Request};
 
 async fn handle_hyper_conn_error(conn: impl Future<Output = std::result::Result<(), hyper::Error>>) {
     if let Err(e) = conn.await {
-        error!("Failed to serve connection: {}", e);
+        if e.is_closed() | e.is_canceled() {
+            error!("Connection closed by client: {}", e);
+        } else {
+            error!("Failed to serve connection: {}", e);
+        }   
     }
 }
 
