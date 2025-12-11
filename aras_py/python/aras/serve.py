@@ -16,6 +16,7 @@ def serve(
     timeout_secs: int = 60,
     rate_limit: tuple[int, int] = (1000, 1),
     buffer_size: int = 1024,
+    asgi_timeout_secs: int = 10,
 ) -> None:
     loop = asyncio.new_event_loop()
     token = generate_cancel_token()
@@ -37,5 +38,6 @@ def serve(
             timeout_secs=timeout_secs,
             rate_limit=rate_limit,
             buffer_size=buffer_size,
+            asgi_timeout_secs=asgi_timeout_secs,
         )
     )

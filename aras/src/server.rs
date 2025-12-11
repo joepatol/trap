@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
@@ -20,6 +21,12 @@ use super::error::{Error, Result, UnexpectedShutdownSrc as SRC};
 use super::protocols::LifespanHandler;
 use super::types::{ConnectionInfo, Request};
 
+async fn handle_hyper_conn_error(conn: impl Future<Output = std::result::Result<(), hyper::Error>>) {
+    if let Err(e) = conn.await {
+        error!("Connection error: {}", e);
+    }
+}
+
 /// The Aras server implementation
 #[derive(Constructor, Clone)]
 pub struct ArasServer {
@@ -41,6 +48,8 @@ pub struct ArasServer {
     rate_limit: (u64, Duration),
     /// Maximum buffer size for requests
     buffer_size: usize,
+    /// Number of seconds the server will wait for an expected ASGI event
+    asgi_timeout_secs: u64,
 }
 
 impl ArasServer {
@@ -91,9 +100,9 @@ impl ArasServer {
                     .auto_date_header(true)
                     .serve_connection(io, svc)
                     .with_upgrades();
-            
-            // TODO: What if this future errors? Any async block results in higher order lifetime error
-            tokio::task::spawn(conn);
+
+            let handled = handle_hyper_conn_error(conn);
+            tokio::task::spawn(handled);
         }
     }
 }
@@ -105,7 +114,7 @@ where
     type Output = Result<()>;
 
     async fn run(&self, application: A, state: A::State) -> Self::Output {
-        let lifespan_handler = LifespanHandler::new()
+        let lifespan_handler = LifespanHandler::new(self.asgi_timeout_secs)
         .startup(application.clone(), state.clone())
         .await?;
 

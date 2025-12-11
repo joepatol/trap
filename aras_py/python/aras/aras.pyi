@@ -18,4 +18,5 @@ def serve_python(
     timeout_secs: int = 60,
     rate_limit: tuple[int, int] = (1000, 1),
     buffer_size: int = 1024,
+    asgi_timeout_secs: int = 10,
 ) -> Awaitable[None]: ...

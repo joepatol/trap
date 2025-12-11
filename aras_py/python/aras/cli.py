@@ -75,6 +75,13 @@ def cli() -> None:
     help="Set the max number of requests that can be waiting",
     show_default=True,
 )
+@click.option(
+    "--asgi-timeout-secs",
+    type=int,
+    default=10,
+    help="Number of seconds the server will wait for an expected ASGI event",
+    show_default=True,
+)
 def serve(
     application: str,
     host: str,
@@ -85,7 +92,8 @@ def serve(
     max_size_kb: int,
     timeout_secs: int,
     rate_limit: tuple[int, int],
-    buffer_size: int = 1024,
+    buffer_size: int,
+    lifespan_timeout_secs: int,
 ) -> None:
     # Insert current working directory to sys.path to make sure the dynamic import,
     # which is referenced from the cwd, works correctly.
@@ -113,4 +121,5 @@ def serve(
         timeout_secs,
         rate_limit,
         buffer_size,
+        lifespan_timeout_secs,
     )

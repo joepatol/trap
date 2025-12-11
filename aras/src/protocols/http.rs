@@ -80,12 +80,7 @@ async fn build_response(mut asgi_app: CalledApplication) -> Result<Response> {
             build_body_stream(asgi_app).await
         }
         Ok(msg) => return Err(Error::unexpected_asgi_message(Box::new(msg))),
-        Err(e) => {
-            return Err(Error::unexpected_shutdown(
-                SRC::Application,
-                format!("Stopped without sending HTTP response: {e}").into(),
-            ))
-        }
+        Err(e) => return Err(e)
     };
 
     Ok(builder.body(body)?)
