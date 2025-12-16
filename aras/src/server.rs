@@ -17,16 +17,16 @@ use tower_http::trace::TraceLayer;
 use crate::types::ResponseStatus;
 
 use super::service::ArasASGIService;
-use super::error::{Error, Result, UnexpectedShutdownSrc as SRC};
+use super::error::Result;
 use super::protocols::LifespanHandler;
 use super::types::{ConnectionInfo, Request};
 
-async fn log_hyper_error(conn: impl Future<Output = std::result::Result<(), hyper::Error>>) {
+async fn log_hyper_error(client: SocketAddr, conn: impl Future<Output = std::result::Result<(), hyper::Error>>) {
     if let Err(e) = conn.await {
         if e.is_closed() | e.is_canceled() {
-            error!("Connection closed by client: {}", e);
+            error!("Connection closed by client: {}. \n {}", client, e);
         } else {
-            error!("Failed to serve connection: {}", e);
+            error!("Failed to serve connection: {}. \n {}", client, e);
         }   
     }
 }
@@ -105,7 +105,7 @@ impl ArasServer {
                     .serve_connection(io, svc)
                     .with_upgrades();
 
-            let handled = log_hyper_error(conn);
+            let handled = log_hyper_error(client, conn);
             tokio::task::spawn(handled);
         }
     }
@@ -124,7 +124,7 @@ where
 
         tokio::select! {
             _ = self.cancel_token.cancelled() => lifespan_handler.shutdown().await,
-            out = self.run_server(application, state) => out.map_err(|e| Error::unexpected_shutdown(SRC::Server, e.to_string())),
+            out = self.run_server(application, state) => out,
         }
     }
 }

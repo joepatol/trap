@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 
 use crate::application::{ApplicationWrapper, CalledApplication};
 use crate::error::Result;
-use crate::error::{Error, UnexpectedShutdownSrc as SRC};
+use crate::error::Error;
 use crate::types::{ConnectionInfo, Response};
 
 #[derive(Constructor)]
@@ -84,10 +84,7 @@ async fn accept_websocket_connection(called_app: &mut CalledApplication) -> Resu
             builder = builder.status(StatusCode::FORBIDDEN);
             Ok((false, builder.body(body)?))
         }
-        Err(e) => Err(Error::unexpected_shutdown(
-            SRC::Application,
-            format!("shutdown during websocket handshake: {e}").into(),
-        )),
+        Err(e) => Err(e),
         Ok(msg) => Err(Error::unexpected_asgi_message(Box::new(msg))),
     }
 }
@@ -162,10 +159,7 @@ async fn do_app_iteration(
             let payload = Payload::Owned(String::from("Internal server error").into_bytes());
             let frame = Frame::new(true, OpCode::Close, None, payload);
             ws.lock().await.write_frame(frame).await?;
-            Err(Error::unexpected_shutdown(
-                SRC::Application,
-                format!("shutdown while open websocket connection: {e}").into(),
-            ))
+            Err(e)
         }
         Ok(msg) => {
             let payload = Payload::Owned(String::from("Internal server error").into_bytes());

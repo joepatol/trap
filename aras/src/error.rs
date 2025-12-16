@@ -23,9 +23,6 @@ pub enum Error {
     #[error(transparent)]
     HTTP(#[from] http::Error),
 
-    #[error("{src} shutdown unexpectedly. {reason}")]
-    UnexpectedShutdown { src: String, reason: String },
-
     #[error(transparent)]
     IO(#[from] io::Error),
 
@@ -58,20 +55,6 @@ pub enum Error {
     DisconnectedClient(#[from] SendError<ASGIReceiveEvent>)
 }
 
-pub enum UnexpectedShutdownSrc {
-    Application,
-    Server,
-}
-
-impl From<UnexpectedShutdownSrc> for String {
-    fn from(value: UnexpectedShutdownSrc) -> Self {
-        match value {
-            UnexpectedShutdownSrc::Application => String::from("Application"),
-            UnexpectedShutdownSrc::Server => String::from("Server"),
-        }
-    }
-}
-
 impl Error {
     pub fn custom(val: impl Display) -> Self {
         Self::Custom(val.to_string())
@@ -87,13 +70,6 @@ impl Error {
 
     pub fn unexpected_asgi_message(msg: Box<dyn DebugDisplay + Send + Sync>) -> Self {
         Self::UnexpectedASGIMessage { msg }
-    }
-
-    pub fn unexpected_shutdown(src: UnexpectedShutdownSrc, reason: String) -> Self {
-        Self::UnexpectedShutdown {
-            src: src.into(),
-            reason,
-        }
     }
 }
 

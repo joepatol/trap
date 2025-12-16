@@ -11,7 +11,7 @@ use asgispec::prelude::*;
 use asgispec::scope::HTTPScope;
 
 use crate::application::{CalledApplication, ApplicationWrapper};
-use crate::error::{Error, Result, UnexpectedShutdownSrc as SRC};
+use crate::error::{Error, Result};
 use crate::types::{ConnectionInfo, Response};
 
 #[derive(Constructor)]
@@ -100,20 +100,15 @@ async fn build_body_stream(mut asgi_app: CalledApplication) -> BoxBody<Bytes, Er
             match asgi_app.receive_from().await {
                 Ok(ASGISendEvent::HTTPResponseBody(msg)) => {
                     more_data = msg.more_body;
-                    yield Ok(msg.body)
+                    yield Ok(Frame::data(Bytes::from(msg.body)))
                 },
                 Ok(msg) => yield Err(Error::unexpected_asgi_message(Box::new(msg))),
-                Err(e) => yield Err(Error::unexpected_shutdown(SRC::Application, format!("{e}").into())),
+                Err(e) => yield Err(e),
             }
         }
     };
 
-    let byte_frame_stream = stream.map(|item| match item {
-        Ok(data) => Ok(Frame::data(Bytes::from(data))),
-        Err(e) => Err(e),
-    });
-
-    BoxBody::new(StreamBody::new(byte_frame_stream))
+    BoxBody::new(StreamBody::new(stream))
 }
 
 fn create_http_scope<B: Body, S: State>(request: &Request<B>, connection_info: &ConnectionInfo, state: S) -> Scope<S> {
