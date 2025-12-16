@@ -27,67 +27,50 @@ impl HTTPHandler {
         let scope = create_http_scope(&request, &conn, state);
         let mut called_app = ApplicationWrapper::from(&application).call(scope);
         
-        stream_request_body(&mut called_app, request.into_body()).await?;
-        build_response(called_app).await
+        read_request(&mut called_app, request).await?;
+        
+        make_response(called_app).await
     } 
 }
 
-async fn stream_request_body<B>(asgi_app: &mut CalledApplication, body: B) -> Result<()>
+async fn read_request<B>(asgi_app: &mut CalledApplication, request: Request<B>) -> Result<()>
 where
     B: Body + Send + 'static,
     <B as hyper::body::Body>::Error: Debug,
 {
-    // This implementation will always send an additional ASGI message with an
-    // empty body once the stream is finished.
-    let mut stream = body.into_data_stream().boxed();
-    let mut part;
+    let body = request.into_body();
     let mut more_body = true;
+    let mut stream = body.into_data_stream().boxed();
 
-    loop {
-        if !more_body {
-            break;
-        }
+    while let Some(part) = stream.next().await {
+        let mut data = part.map_err(|e| Error::custom(format!("Failed to read body: {e:?}")))?;
+        let size = data.remaining();
 
-        part = stream.next().await;
+        let bytes = data.copy_to_bytes(size);
+        more_body = stream.size_hint().1.map_or(true, |u| u > 0);
 
-        let data = part.map_or_else(
-            || {
-                more_body = false;
-                Ok(Vec::new())
-            },
-            |part_result| {
-                part_result
-                    .map(|mut data| data.copy_to_bytes(data.remaining()).to_vec())
-                    .map_err(|e| Error::custom(format!("Failed to read body: {e:?}")))
-            },
-        )?;
+        let msg = ASGIReceiveEvent::new_http_request(bytes.to_vec(), more_body);
+        asgi_app.send_to(msg).await?;
+    };
 
-        let msg = ASGIReceiveEvent::new_http_request(data, more_body);
+    if more_body {
+        // The stream terminated but the size hint did not indicate the end of the body.
+        // Send an empty body with more_body = false to indicate the end of the body.
+        let msg = ASGIReceiveEvent::new_http_request(Vec::new(), false);
         asgi_app.send_to(msg).await?;
     }
+
     Ok(())
 }
 
-async fn build_response(mut asgi_app: CalledApplication) -> Result<Response> {
-    let mut builder = hyper::Response::builder();
-
-    let body = match asgi_app.receive_from().await {
-        Ok(ASGISendEvent::HTTPResponseStart(msg)) => {
-            builder = builder.status(msg.status);
-            for (bytes_key, bytes_value) in msg.headers.into_iter() {
-                builder = builder.header(bytes_key, bytes_value);
-            }
-            build_body_stream(asgi_app).await
-        }
+async fn make_response(mut asgi_app: CalledApplication) -> Result<Response> {
+    let response_start_event = match asgi_app.receive_from().await {
+        Ok(ASGISendEvent::HTTPResponseStart(msg)) => msg,
         Ok(msg) => return Err(Error::unexpected_asgi_message(Box::new(msg))),
         Err(e) => return Err(e)
     };
 
-    Ok(builder.body(body)?)
-}
-
-async fn build_body_stream(mut asgi_app: CalledApplication) -> BoxBody<Bytes, Error> {
-    let stream = async_stream::stream! {
+    let body_stream = async_stream::stream! {
         let mut more_data = true;
         loop {
             if !more_data {
@@ -108,7 +91,13 @@ async fn build_body_stream(mut asgi_app: CalledApplication) -> BoxBody<Bytes, Er
         }
     };
 
-    BoxBody::new(StreamBody::new(stream))
+    let mut builder = hyper::Response::builder();
+    builder = builder.status(response_start_event.status);
+    for (bytes_key, bytes_value) in response_start_event.headers.into_iter() {
+        builder = builder.header(bytes_key, bytes_value);
+    };
+    let body = BoxBody::new(StreamBody::new(body_stream));
+    Ok(builder.body(body)?)
 }
 
 fn create_http_scope<B: Body, S: State>(request: &Request<B>, connection_info: &ConnectionInfo, state: S) -> Scope<S> {
