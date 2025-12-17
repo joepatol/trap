@@ -49,7 +49,6 @@ impl HTTPHandler {
         let mut more_body = true;
         let mut stream = body.into_data_stream().boxed();
 
-        // Handle timeout error
         while let Some(part) = tokio::time::timeout(timeout, stream.next()).await? {
             let mut data = part.map_err(|e| Error::custom(format!("Failed to read body: {e}")))?;
             

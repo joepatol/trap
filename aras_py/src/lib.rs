@@ -96,13 +96,13 @@ fn serve_python<'a>(
     let asgi_application = PyASGIAppWrapper::new(application, task_locals.clone_ref(py));
 
     let asgi_server = ArasServer::new(
+        cancel_token,
         addr.into(),
         port,
         keep_alive,
         Duration::from_secs(timeout_secs),
         max_size_kb * 1000,
         max_concurrency.unwrap_or(Semaphore::MAX_PERMITS),
-        cancel_token,
         (rate_limit.0, Duration::from_secs(rate_limit.1)),
         buffer_size,
         asgi_timeout_secs,
