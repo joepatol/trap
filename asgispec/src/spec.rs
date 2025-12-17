@@ -3,6 +3,8 @@ use std::fmt::Display;
 use std::future::Future;
 use std::sync::Arc;
 
+use bytes::Bytes;
+
 use crate::events::*;
 use crate::scope::*;
 
@@ -153,7 +155,7 @@ impl ASGISendEvent {
         Self::HTTPResponseStart(HTTPResponseStartEvent::new(status, headers))
     }
 
-    pub fn new_http_response_body(data: Vec<u8>, more_body: bool) -> Self {
+    pub fn new_http_response_body(data: Bytes, more_body: bool) -> Self {
         Self::HTTPResponseBody(HTTPResponseBodyEvent::new(data, more_body))
     }
 
@@ -165,7 +167,7 @@ impl ASGISendEvent {
         Self::WebsocketClose(WebsocketCloseEvent::new(code, reason))
     }
 
-    pub fn new_websocket_send(bytes: Option<Vec<u8>>, text: Option<String>) -> Self {
+    pub fn new_websocket_send(bytes: Option<Bytes>, text: Option<String>) -> Self {
         Self::WebsocketSend(WebsocketSendEvent::new(bytes, text))
     }
 }
@@ -179,7 +181,7 @@ impl ASGIReceiveEvent {
         Self::Shutdown(LifespanShutdownEvent::new())
     }
 
-    pub fn new_http_request(data: Vec<u8>, more_body: bool) -> Self {
+    pub fn new_http_request(data: Bytes, more_body: bool) -> Self {
         Self::HTTPRequest(HTTPRequestEvent::new(data, more_body))
     }
 
@@ -191,7 +193,7 @@ impl ASGIReceiveEvent {
         Self::WebsocketConnect(WebsocketConnectEvent::new())
     }
 
-    pub fn new_websocket_receive(bytes: Option<Vec<u8>>, text: Option<String>) -> Self {
+    pub fn new_websocket_receive(bytes: Option<Bytes>, text: Option<String>) -> Self {
         Self::WebsocketReceive(WebsocketReceiveEvent::new(bytes, text))
     }
 

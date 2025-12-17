@@ -1,11 +1,13 @@
+use bytes::Bytes;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HTTPRequestEvent {
-    pub body: Vec<u8>,
+    pub body: Bytes,
     pub more_body: bool,
 }
 
 impl HTTPRequestEvent {
-    pub fn new(body: Vec<u8>, more_body: bool) -> Self {
+    pub fn new(body: Bytes, more_body: bool) -> Self {
         Self { body, more_body }
     }
 }
@@ -51,12 +53,12 @@ impl std::fmt::Display for HTTPResponseStartEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HTTPResponseBodyEvent {
-    pub body: Vec<u8>,
+    pub body: Bytes,
     pub more_body: bool,
 }
 
 impl HTTPResponseBodyEvent {
-    pub fn new(body: Vec<u8>, more_body: bool) -> Self {
+    pub fn new(body: Bytes, more_body: bool) -> Self {
         Self { body, more_body }
     }
 }

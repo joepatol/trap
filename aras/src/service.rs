@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::fmt::Display;
 use std::task::{Poll, Context};
 
 use asgispec::prelude::*;
@@ -20,13 +20,14 @@ pub struct ArasASGIService<A: ASGIApplication> {
     application: A,
     state: A::State,
     conn: ConnectionInfo,
+    asgi_timeout_secs: u64,
 }
 
 impl<A, B> Service<Request<B>> for ArasASGIService<A> 
 where
     A: ASGIApplication + 'static,
     B: Body + Send + 'static,
-    <B as Body>::Error: Debug + Send,
+    <B as Body>::Error: Display + Send,
     <B as Body>::Data: Send,
 {
     type Error = Error;
@@ -48,7 +49,7 @@ where
             );
             Box::pin(handle_error(fut))
         } else {
-            let handler = HTTPHandler::new();
+            let handler = HTTPHandler::new(self.asgi_timeout_secs);
             let fut = handler.serve(
                 self.application.clone(), 
                 request,

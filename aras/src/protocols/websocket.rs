@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::fmt::Display;
 use std::sync::Arc;
 
 use asgispec::prelude::*;
@@ -36,7 +36,7 @@ impl WebsocketHandler {
     where
         A: ASGIApplication + 'static,
         B: Body + Send + 'static,
-        <B as hyper::body::Body>::Error: Debug,
+        B::Error: Display,
     {
         let scope: Scope<A::State> = create_ws_scope(&request, &conn, state);
         let mut called_app = ApplicationWrapper::from(&application).call(scope);
@@ -173,13 +173,18 @@ async fn do_app_iteration(
 }
 
 async fn do_server_iteration(frame: Frame<'_>, asgi_app: &mut CalledApplication) -> Result<bool> {
-    let frame_bytes = frame.payload.to_vec();
+    let bytes = match frame.payload {
+        Payload::Bytes(b) => Bytes::from(b),
+        Payload::Owned(b) => Bytes::from(b),
+        Payload::Borrowed(b) => Bytes::copy_from_slice(b),
+        Payload::BorrowedMut(b) => Bytes::copy_from_slice(b),
+    };
 
     match frame.opcode {
         OpCode::Close => Ok(false),
         OpCode::Text => {
             // Text is guaranteed to be utf-8 by fastwebsockets
-            let text = String::from_utf8(frame_bytes).unwrap();
+            let text = String::from_utf8(bytes.to_vec()).unwrap();
             asgi_app
                 .send_to(ASGIReceiveEvent::new_websocket_receive(None, Some(text)))
                 .await?;
@@ -187,7 +192,7 @@ async fn do_server_iteration(frame: Frame<'_>, asgi_app: &mut CalledApplication)
         }
         OpCode::Binary => {
             asgi_app
-                .send_to(ASGIReceiveEvent::new_websocket_receive(Some(frame_bytes), None))
+                .send_to(ASGIReceiveEvent::new_websocket_receive(Some(bytes), None))
                 .await?;
             Ok(true)
         }

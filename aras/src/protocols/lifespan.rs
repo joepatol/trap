@@ -74,15 +74,15 @@ async fn startup_loop(application: &mut CalledApplication, timeout_secs: u64) ->
         debug!("Lifespan protocol appears unsupported: {e}");
         return Ok(false)
     }
-    match tokio::time::timeout(Duration::from_secs(timeout_secs), application.receive_from()).await {
-        Ok(Ok(ASGISendEvent::StartupComplete(_))) => Ok(true),
-        Ok(Ok(ASGISendEvent::StartupFailed(event))) => Err(Error::custom(event.message)),
+    match tokio::time::timeout(Duration::from_secs(timeout_secs), application.receive_from()).await? {
+        Ok(ASGISendEvent::StartupComplete(_)) => Ok(true),
+        Ok(ASGISendEvent::StartupFailed(event)) => Err(Error::custom(event.message)),
         Ok(_) => {
             info!("Lifespan protocol appears unsupported (no lifespan event received)");
             Ok(false)
         },
         Err(_) => {
-            info!("Lifespan protocol appears unsupported (timeout)");
+            info!("Lifespan protocol appears unsupported (error received)");
             Ok(false)
         }
     }
@@ -90,12 +90,11 @@ async fn startup_loop(application: &mut CalledApplication, timeout_secs: u64) ->
 
 async fn shutdown_loop(mut application: CalledApplication, timeout_secs: u64) -> Result<()> {
     application.send_to(ASGIReceiveEvent::new_lifespan_shutdown()).await?;
-    match tokio::time::timeout(Duration::from_secs(timeout_secs), application.receive_from()).await {
-        Ok(Ok(ASGISendEvent::ShutdownComplete(_))) => Ok(()),
-        Ok(Ok(ASGISendEvent::ShutdownFailed(event))) => Err(Error::custom(event.message)),
-        Ok(Ok(msg)) => Err(Error::unexpected_asgi_message(Box::new(msg))),
-        Ok(Err(e)) => Err(e),
-        Err(_) => Err(Error::custom(format!("Lifespan shutdown timed out after {} seconds", timeout_secs))),
+    match tokio::time::timeout(Duration::from_secs(timeout_secs), application.receive_from()).await? {
+        Ok(ASGISendEvent::ShutdownComplete(_)) => Ok(()),
+        Ok(ASGISendEvent::ShutdownFailed(event)) => Err(Error::custom(event.message)),
+        Ok(msg) => Err(Error::unexpected_asgi_message(Box::new(msg))),
+        Err(e) => Err(e),
     }
 }
 

@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use log::error;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::{PyBytes, PyDict, PyList, PyMapping, PyNone, PyString};
@@ -18,7 +19,7 @@ pub fn parse_py_http_response_start(py_map: &Bound<PyMapping>) -> PyResult<ASGIS
 }
 
 pub fn parse_py_http_response_body(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEvent> {
-    let body: Vec<u8> = py_map.get_item("body")?.extract()?;
+    let body = Bytes::from(py_map.get_item("body")?.extract::<Vec<u8>>()?);
     let more_body = py_map
         .get_item("more_body")
         .and_then(|v| v.extract::<bool>())
@@ -45,7 +46,7 @@ pub fn parse_shutdown_failed(py_map: &Bound<PyMapping>) -> ASGISendEvent {
 pub fn http_request_event_into_py<'py>(py: Python<'py>, event: HTTPRequestEvent) -> PyResult<Bound<'py, PyDict>> {
     let python_result_dict = PyDict::new(py);
     python_result_dict.set_item("type", "http.request".into_pyobject(py)?)?;
-    python_result_dict.set_item("body", PyBytes::new(py, event.body.as_slice()))?;
+    python_result_dict.set_item("body", PyBytes::new(py, &event.body))?;
     python_result_dict.set_item("more_body", event.more_body.into_pyobject(py)?)?;
     Ok(python_result_dict)
 }
@@ -129,7 +130,7 @@ pub fn parse_websocket_accept(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEve
 pub fn parse_websocket_send(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEvent> {
     let bytes = py_map
         .get_item("bytes")
-        .and_then(|inner| inner.extract::<Vec<u8>>())
+        .and_then(|inner| Ok(Bytes::from(inner.extract::<Vec<u8>>()?)))
         .ok();
     let text = py_map
         .get_item("text")

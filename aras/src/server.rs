@@ -95,7 +95,7 @@ impl ArasServer {
                 .concurrency_limit(self.concurrency_limit)
                 .load_shed()
                 .timeout(self.timeout)
-                .service(ArasASGIService::new(application.clone(), state.clone(), conn_info));
+                .service(ArasASGIService::new(application.clone(), state.clone(), conn_info, self.asgi_timeout_secs));
 
             let svc = TowerToHyperService::new(svc);
             let conn = http1::Builder::new()

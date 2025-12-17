@@ -1,3 +1,5 @@
+use bytes::Bytes;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketConnectEvent;
 
@@ -47,13 +49,13 @@ impl std::fmt::Display for WebsocketAcceptEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketReceiveEvent {
-    pub bytes: Option<Vec<u8>>,
+    pub bytes: Option<Bytes>,
     pub text: Option<String>,
 }
 
 impl WebsocketReceiveEvent {
     pub fn new(
-        bytes: Option<Vec<u8>>,
+        bytes: Option<Bytes>,
         text: Option<String>,
     ) -> Self {
         Self { bytes, text }
@@ -79,13 +81,13 @@ impl std::fmt::Display for WebsocketReceiveEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketSendEvent {
-    pub bytes: Option<Vec<u8>>,
+    pub bytes: Option<Bytes>,
     pub text: Option<String>,
 }
 
 impl WebsocketSendEvent {
     pub fn new(
-        bytes: Option<Vec<u8>>,
+        bytes: Option<Bytes>,
         text: Option<String>,
     ) -> Self {
         Self { bytes, text }

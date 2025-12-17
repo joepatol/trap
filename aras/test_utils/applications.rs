@@ -1,6 +1,7 @@
 // ASGI Applications used for testing
 use asgispec::prelude::*;
 use asgispec::scope::LifespanScope;
+use bytes::Bytes;
 
 // Mocks
 #[derive(Debug)]
@@ -109,7 +110,7 @@ impl ASGIApplication for LifespanProtocolApp {
 
 #[derive(Clone, Debug)]
 pub struct EchoApp {
-    extra_body: Option<String>,
+    extra_body: Option<Bytes>,
 }
 
 impl EchoApp {
@@ -119,7 +120,7 @@ impl EchoApp {
 
     pub fn new_with_body(body: &str) -> Self {
         Self {
-            extra_body: Some(body.to_string()),
+            extra_body: Some(Bytes::from(body.to_string())),
         }
     }
 }
@@ -144,11 +145,11 @@ impl ASGIApplication for EchoApp {
                         let start_msg = ASGISendEvent::new_http_response_start(200, headers.clone());
                         send(start_msg).await.map_err(|e| TestError { 0: e.to_string() })?;
                         let more_body = self.extra_body.is_some();
-                        let body_msg = ASGISendEvent::new_http_response_body(body.clone(), more_body);
+                        let body_msg = ASGISendEvent::new_http_response_body(Bytes::from(body.clone()), more_body);
                         send(body_msg).await.map_err(|e| TestError { 0: e.to_string() })?;
                         if let Some(b) = &self.extra_body {
                             let next_msg =
-                                ASGISendEvent::new_http_response_body(b.to_string().as_bytes().to_vec(), false);
+                                ASGISendEvent::new_http_response_body(b.clone(), false);
                             (send)(next_msg).await.map_err(|e| TestError { 0: e.to_string() })?;
                         };
                     };
@@ -244,7 +245,7 @@ impl ASGIApplication for ErrorInDataStreamApp {
         _ = receive().await;
         let res_start_msg = ASGISendEvent::new_http_response_start(200, headers);
         send(res_start_msg).await.map_err(|e| TestError { 0: e.to_string() })?;
-        let first_body = ASGISendEvent::new_http_response_body(String::from("hello").as_bytes().to_vec(), true);
+        let first_body = ASGISendEvent::new_http_response_body(Bytes::from("hello"), true);
         send(first_body).await.map_err(|e| TestError { 0: e.to_string() })?;
         // Instead of more body an invalid message is sent to mimick the error
         let invalid = ASGISendEvent::new_startup_complete();

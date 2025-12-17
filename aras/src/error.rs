@@ -52,7 +52,10 @@ pub enum Error {
     ApplicationNotRunning,
 
     #[error(transparent)]
-    DisconnectedClient(#[from] SendError<ASGIReceiveEvent>)
+    DisconnectedClient(#[from] SendError<ASGIReceiveEvent>),
+
+    #[error("ASGI await timeout elapsed")]
+    Timeout(#[from] tokio::time::error::Elapsed),
 }
 
 impl Error {
