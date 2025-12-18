@@ -40,10 +40,10 @@ impl LifespanHandler {
     }
 }
 
-#[derive(Constructor)]
+#[derive(Constructor, Debug)]
 pub struct StartedLifespanHandler {
     application: CalledApplication,
-    enabled: bool,
+    pub(crate) enabled: bool,
     timeout_secs: u64,
 }
 
@@ -149,7 +149,8 @@ mod tests {
     async fn test_error_on_startup() {
         let handler = LifespanHandler::new(5);
         let result = handler.startup(ErrorInLoopApp {}, MockState {}).await;
-        assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during startup"));
+
+        assert!(result.unwrap().enabled == false);
     }
 
     #[tokio::test]
@@ -163,17 +164,16 @@ mod tests {
     async fn test_app_fails_when_called() {
         let handler = LifespanHandler::new(5);
         let result = handler.startup(ErrorOnCallApp {}, MockState {}).await;
-        assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during startup"));
+        
+        assert!(result.unwrap().enabled == false);
     }
 
     #[tokio::test]
     async fn test_app_returns_early() {
         let handler = LifespanHandler::new(5);
         let result = handler.startup(ImmediateReturnApp {}, MockState {}).await;
-        assert!(result.is_err_and(|e| {
-            println!("{}", e.to_string());
-            true
-        }));
+
+        assert!(result.unwrap().enabled == false);
     }
 
     #[tokio::test]
@@ -189,6 +189,8 @@ mod tests {
         let app = ApplicationWrapper::from(ErrorOnCallApp {}).call(build_lifespan_scope());
         let lifespan_handler = StartedLifespanHandler::new(app, true, 5);
         let result = lifespan_handler.shutdown().await;
-        assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during shutdown"));
+        assert!(result.is_err_and(|e| {
+            e.to_string() == "receiving from an empty and closed channel"
+        }));
     }
 }

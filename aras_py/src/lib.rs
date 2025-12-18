@@ -51,10 +51,10 @@ fn generate_cancel_token() -> PyStopServerToken {
     keep_alive = true,
     max_concurrency = None,
     max_size_kb = 1000000,
-    timeout_secs = 60,
+    request_timeout = 180,
     rate_limit = (1000, 1),
     buffer_size = 1024,
-    asgi_timeout_secs = 10,
+    backpressure_timeout = 60,
 ))]
 /// Serves a Python ASGI application using the ARAS server.
 ///
@@ -81,10 +81,10 @@ fn serve_python<'a>(
     keep_alive: bool,
     max_concurrency: Option<usize>,
     max_size_kb: usize,
-    timeout_secs: u64,
+    request_timeout: u64,
     rate_limit: (u64, u64),
     buffer_size: usize,
-    asgi_timeout_secs: u64,
+    backpressure_timeout: u64,
 ) -> PyResult<Bound<'a, PyAny>> {
     tracing_subscriber::fmt()
         .with_max_level(get_log_level_filter(log_level))
@@ -100,12 +100,12 @@ fn serve_python<'a>(
         addr.into(),
         port,
         keep_alive,
-        Duration::from_secs(timeout_secs),
+        Duration::from_secs(request_timeout),
         max_size_kb * 1000,
         max_concurrency.unwrap_or(Semaphore::MAX_PERMITS),
         (rate_limit.0, Duration::from_secs(rate_limit.1)),
         buffer_size,
-        asgi_timeout_secs,
+        backpressure_timeout,
     );
 
     pyo3_async_runtimes::tokio::future_into_py_with_locals(py, task_locals, async move {

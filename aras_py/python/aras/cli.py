@@ -55,9 +55,9 @@ def cli() -> None:
     show_default=True,
 )
 @click.option(
-    "--timeout-secs",
+    "--request-timeout",
     type=int,
-    default=60,
+    default=180,
     help="Set the request timeout in seconds",
     show_default=True,
 )
@@ -76,9 +76,9 @@ def cli() -> None:
     show_default=True,
 )
 @click.option(
-    "--asgi-timeout-secs",
+    "--backpressure-timeout",
     type=int,
-    default=10,
+    default=60,
     help="Number of seconds the server will wait for an expected ASGI event",
     show_default=True,
 )
@@ -90,10 +90,10 @@ def serve(
     no_keep_alive: bool,
     max_concurrency: int | None,
     max_size_kb: int,
-    timeout_secs: int,
+    request_timeout: int,
     rate_limit: tuple[int, int],
     buffer_size: int,
-    lifespan_timeout_secs: int,
+    backpressure_timeout: int,
 ) -> None:
     # Insert current working directory to sys.path to make sure the dynamic import,
     # which is referenced from the cwd, works correctly.
@@ -118,8 +118,8 @@ def serve(
         not no_keep_alive,
         max_concurrency,
         max_size_kb,
-        timeout_secs,
+        request_timeout,
         rate_limit,
         buffer_size,
-        lifespan_timeout_secs,
+        backpressure_timeout,
     )

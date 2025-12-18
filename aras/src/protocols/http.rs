@@ -17,7 +17,7 @@ use crate::types::{ConnectionInfo, Response};
 
 #[derive(Constructor)]
 pub(crate) struct HTTPHandler {
-    asgi_timeout_secs: u64,
+    timeout_secs: u64,
 }
 
 impl HTTPHandler {
@@ -45,7 +45,7 @@ impl HTTPHandler {
         B: Body + Send + 'static,
         B::Error: Display,
     {
-        let timeout = Duration::from_secs(self.asgi_timeout_secs);
+        let timeout = Duration::from_secs(self.timeout_secs);
         let mut more_body = true;
         let mut stream = body.into_data_stream().boxed();
 
@@ -71,7 +71,7 @@ impl HTTPHandler {
     }
 
     async fn make_response(&self, mut asgi_app: CalledApplication) -> Result<Response> {
-        let timeout = Duration::from_secs(self.asgi_timeout_secs);
+        let timeout = Duration::from_secs(self.timeout_secs);
 
         let response_start_event = match asgi_app.receive_from().await {
             Ok(ASGISendEvent::HTTPResponseStart(msg)) => msg,

@@ -51,7 +51,7 @@ pub struct ArasServer {
     keep_alive: bool,
     /// Request timeout. If the innermost ASGI service fails to respond after this time
     /// (the entire request lifecycle), the server will return a 504 Gateway Timeout response.
-    timeout: Duration,
+    request_timeout: Duration,
     /// Max request body size. If the size is exceeded, the server will return a 413 Payload Too Large response.
     body_limit: usize,
     /// Max number of in-flight requests. If the limit is reached, requests will be
@@ -66,7 +66,7 @@ pub struct ArasServer {
     /// Number of seconds the server will wait for events like reading the incoming body stream
     /// or receiving ASGI messages from the application.
     /// Allows for more granular control than the general request timeout
-    asgi_timeout_secs: u64,
+    backpressure_timeout: u64,
 }
 
 impl ArasServer {
@@ -107,12 +107,12 @@ impl ArasServer {
                 .buffer(self.buffer_size)
                 .rate_limit(self.rate_limit.0, self.rate_limit.1)
                 .concurrency_limit(self.concurrency_limit)
-                .timeout(self.timeout)
+                .timeout(self.request_timeout)
                 .service(ArasASGIService::new(
                     application.clone(),
                     state.clone(),
                     conn_info,
-                    self.asgi_timeout_secs,
+                    self.backpressure_timeout,
                 ));
 
             let svc = TowerToHyperService::new(svc);
@@ -136,7 +136,7 @@ where
     type Output = Result<()>;
 
     async fn run(&self, application: A, state: A::State) -> Self::Output {
-        let lifespan_handler = LifespanHandler::new(self.asgi_timeout_secs)
+        let lifespan_handler = LifespanHandler::new(self.backpressure_timeout)
             .startup(application.clone(), state.clone())
             .await?;
 

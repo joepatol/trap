@@ -89,7 +89,7 @@ impl<A: ASGIApplication> From<&A> for ApplicationWrapper<A> {
 
 /// An ASGIApplication that has been called
 /// This type is mainly for convenience. It circumvents the need for a generic `A`
-#[derive(Constructor)]
+#[derive(Constructor, Debug)]
 pub(crate) struct CalledApplication {
     pub(crate) result_handle: OneshotReceiver<Result<()>>,
     send_queue: Sender<ASGIReceiveEvent>,
