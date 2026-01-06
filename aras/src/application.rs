@@ -143,7 +143,7 @@ impl CalledApplication {
         // Check if the application is still running and if so, wait for a message
         match self.result_handle.try_recv() {
             // There is no return message, but the app is still running, so wait for one
-            Err(TryRecvError::Empty) => Ok(self.receive_queue.recv().await?),
+            Err(TryRecvError::Empty) => Ok(self.receive_queue.recv().await.map_err(|_| Error::application_not_running())?),
             // There is no return message because the channel is closed or it was already received
             Err(TryRecvError::Closed) => Err(Error::application_not_running()),
             // The app returned
@@ -203,6 +203,7 @@ mod tests {
 
         // Receive the application response and ensure shutdown complete
         let shutdown_response = called_app.receive_from().await;
+        println!("Shutdown response: {:?}", shutdown_response);
         assert!(shutdown_response.is_ok());
         let shutdown_msg = shutdown_response.unwrap();
         assert!(matches!(shutdown_msg, ASGISendEvent::ShutdownComplete(_)));

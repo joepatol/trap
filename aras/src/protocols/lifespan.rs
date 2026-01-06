@@ -135,6 +135,7 @@ mod tests {
             .call(build_lifespan_scope());
         let lifespan_handler = StartedLifespanHandler::new(running_app, true, 5);
         let result = lifespan_handler.shutdown().await;
+        println!("{:?}", result);
         assert!(result.is_ok());
     }
 
@@ -188,9 +189,12 @@ mod tests {
     async fn test_error_on_shutdown() {
         let app = ApplicationWrapper::from(ErrorOnCallApp {}).call(build_lifespan_scope());
         let lifespan_handler = StartedLifespanHandler::new(app, true, 5);
+        tokio::task::yield_now().await;
         let result = lifespan_handler.shutdown().await;
+
         assert!(result.is_err_and(|e| {
-            e.to_string() == "receiving from an empty and closed channel"
+            println!("{}", e);
+            e.to_string() == "Application error: TestError(\"Immediate error\")"
         }));
     }
 }

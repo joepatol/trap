@@ -81,8 +81,7 @@ impl LifespanProtocolApp {
     }
     
     async fn receive_message(&self, receive: &ReceiveFn) -> ASGIReceiveEvent {
-        let msg = (receive)().await;
-        msg
+        (receive)().await
     }
 
     fn get_response(&self, msg: &ASGIReceiveEvent) -> ASGISendEvent {
