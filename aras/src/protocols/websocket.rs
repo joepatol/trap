@@ -17,9 +17,9 @@ use hyper_util::rt::TokioIo;
 use log::error;
 use tokio::sync::Mutex;
 
-use crate::application::{ApplicationWrapper, CalledApplication};
-use crate::error::Result;
-use crate::error::Error;
+use crate::communication::{CommunicatorFactory, SendToApp, ReceiveFromApp};
+use crate::errors::Result;
+use crate::errors::Error;
 use crate::types::{ConnectionInfo, Response};
 
 #[derive(Constructor)]
@@ -38,15 +38,16 @@ impl WebsocketHandler {
         B: Body + Send + 'static,
         B::Error: Display,
     {
+        let factory = CommunicatorFactory::new();
         let scope: Scope<A::State> = create_ws_scope(&request, &conn, state);
-        let mut called_app = ApplicationWrapper::from(&application).call(scope);
+        let (mut send_to, mut receive_from) = factory.build(application, scope);
 
-        let (accepted, app_response) = accept_websocket_connection(&mut called_app).await?;
+        let (accepted, app_response) = accept_websocket_connection(&mut send_to, &mut receive_from).await?;
 
         if accepted {
             let (upgrade_response, fut) = upgrade::upgrade(&mut request)?;
             tokio::task::spawn(async move {
-                match run_accepted_websocket(&mut called_app, fut).await {
+                match run_accepted_websocket(&mut send_to, &mut receive_from, fut).await {
                     Ok(_) => (),
                     Err(e) => error!("Error while serving websocket; {e}"),
                 }
@@ -61,11 +62,11 @@ impl WebsocketHandler {
     }
 }
 
-async fn accept_websocket_connection(called_app: &mut CalledApplication) -> Result<(bool, Response)> {
+async fn accept_websocket_connection(send_to: &mut SendToApp, receive_from: &mut ReceiveFromApp) -> Result<(bool, Response)> {
     let mut builder = hyper::Response::builder();
-    called_app.send_to(ASGIReceiveEvent::new_websocket_connect()).await?;
+    send_to.push(ASGIReceiveEvent::new_websocket_connect()).await?;
 
-    match called_app.receive_from().await {
+    match receive_from.next().await {
         Ok(ASGISendEvent::WebsocketAccept(msg)) => {
             let body = Full::new(Vec::<u8>::new().into())
                 .map_err(|never| match never {})
@@ -85,7 +86,7 @@ async fn accept_websocket_connection(called_app: &mut CalledApplication) -> Resu
             Ok((false, builder.body(body)?))
         }
         Err(e) => Err(e),
-        Ok(msg) => Err(Error::unexpected_asgi_message(Box::new(msg))),
+        Ok(msg) => Err(Error::unexpected_asgi_message(Arc::new(msg))),
     }
 }
 
@@ -94,7 +95,7 @@ enum WsIteration<'a> {
     ReceiveApplication(Result<ASGISendEvent>),
 }
 
-async fn run_accepted_websocket(called_app: &mut CalledApplication, upgraded_io: UpgradeFut) -> Result<()> {
+async fn run_accepted_websocket(send_to: &mut SendToApp, receive_from: &mut ReceiveFromApp, upgraded_io: UpgradeFut) -> Result<()> {
     let ws = Arc::new(Mutex::new(FragmentCollector::new(upgraded_io.await?)));
 
     loop {
@@ -103,14 +104,14 @@ async fn run_accepted_websocket(called_app: &mut CalledApplication, upgraded_io:
 
         let iteration: WsIteration<'_> = tokio::select! {
             out = ws_locked.read_frame() => WsIteration::ReceiveClient(out),
-            out = called_app.receive_from() => WsIteration::ReceiveApplication(out),
+            out = receive_from.next() => WsIteration::ReceiveApplication(out),
         };
 
         drop(ws_locked); // Drop the lock so it can be acquired for writing
 
         match iteration {
             WsIteration::ReceiveClient(frame) => {
-                if !do_server_iteration(frame?, called_app).await? {
+                if !do_server_iteration(frame?, send_to).await? {
                     break;
                 };
             }
@@ -123,11 +124,10 @@ async fn run_accepted_websocket(called_app: &mut CalledApplication, upgraded_io:
         };
     }
 
-    called_app
-        .send_to(ASGIReceiveEvent::new_websocket_disconnect(1005))
+    send_to
+        .push(ASGIReceiveEvent::new_websocket_disconnect(1005))
         .await?;
-    called_app.close();
-
+    
     Ok(())
 }
 
@@ -165,14 +165,14 @@ async fn do_app_iteration(
             let payload = Payload::Owned(String::from("Internal server error").into_bytes());
             let frame = Frame::new(true, OpCode::Close, None, payload);
             ws.lock().await.write_frame(frame).await?;
-            Err(Error::unexpected_asgi_message(Box::new(format!(
+            Err(Error::unexpected_asgi_message(Arc::new(format!(
                 "Received invalid ASGI message in websocket loop. Got: {msg:?}"
             ))))
         }
     }
 }
 
-async fn do_server_iteration(frame: Frame<'_>, asgi_app: &mut CalledApplication) -> Result<bool> {
+async fn do_server_iteration(frame: Frame<'_>, send_to: &mut SendToApp) -> Result<bool> {
     let bytes = match frame.payload {
         Payload::Bytes(b) => Bytes::from(b),
         Payload::Owned(b) => Bytes::from(b),
@@ -185,14 +185,14 @@ async fn do_server_iteration(frame: Frame<'_>, asgi_app: &mut CalledApplication)
         OpCode::Text => {
             // Text is guaranteed to be utf-8 by fastwebsockets
             let text = String::from_utf8(bytes.to_vec()).unwrap();
-            asgi_app
-                .send_to(ASGIReceiveEvent::new_websocket_receive(None, Some(text)))
+            send_to
+                .push(ASGIReceiveEvent::new_websocket_receive(None, Some(text)))
                 .await?;
             Ok(true)
         }
         OpCode::Binary => {
-            asgi_app
-                .send_to(ASGIReceiveEvent::new_websocket_receive(Some(bytes), None))
+            send_to
+                .push(ASGIReceiveEvent::new_websocket_receive(Some(bytes), None))
                 .await?;
             Ok(true)
         }

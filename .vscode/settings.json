@@ -1,5 +1,8 @@
 {
     "rust-analyzer.rustfmt.extraArgs": ["--config", "max_width=120"],
+    "rust-analyzer.runnables.extraEnv": {
+        "RUST_BACKTRACE": "full"
+    },
     "[rust]": {
         "editor.defaultFormatter": "rust-lang.rust-analyzer", // Makes the magic
         "editor.formatOnSave": true // Optional

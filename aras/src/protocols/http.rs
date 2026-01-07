@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::sync::Arc;
 use std::time::Duration;
 
 use asgispec::prelude::*;
@@ -11,8 +12,8 @@ use http_body_util::{BodyExt, StreamBody};
 use hyper::body::{Body, Frame};
 use hyper::Request;
 
-use crate::application::{ApplicationWrapper, CalledApplication};
-use crate::error::{Error, Result};
+use crate::communication::{CommunicatorFactory, ReceiveFromApp, SendToApp};
+use crate::errors::{Error, Result};
 use crate::types::{ConnectionInfo, Response};
 
 #[derive(Constructor)]
@@ -33,14 +34,24 @@ impl HTTPHandler {
         B: Body + Send + 'static,
         B::Error: Display,
     {
+        let factory = CommunicatorFactory::new();
         let scope = create_http_scope(&request, &conn, state);
-        let mut called_app = ApplicationWrapper::from(&application).call(scope);
+        
+        let (mut send_to_app, receive_from_app) = factory.build(application, scope);
 
-        self.read_body(&mut called_app, request.into_body()).await?;
-        self.make_response(called_app).await
+        let response = tokio::try_join!(
+            self.read_body(&mut send_to_app, request.into_body()),
+            self.make_response(receive_from_app),
+        );
+
+        // If sending the disconnect event fails, it's because the application
+        // cannot receive any more messages. We don't care...
+        _ = send_to_app.push(ASGIReceiveEvent::new_http_disconnect()).await;
+
+        Ok(response?.1)
     }
 
-    async fn read_body<B>(&self, asgi_app: &mut CalledApplication, body: B) -> Result<()>
+    async fn read_body<B>(&self, send_to_app: &mut SendToApp, body: B) -> Result<()>
     where
         B: Body + Send + 'static,
         B::Error: Display,
@@ -57,25 +68,25 @@ impl HTTPHandler {
             more_body = stream.size_hint().1.map_or(true, |u| u > 0);
 
             let msg = ASGIReceiveEvent::new_http_request(bytes, more_body);
-            asgi_app.send_to(msg).await?;
+            send_to_app.push(msg).await?;
         }
 
         if more_body {
             // The stream terminated but the size hint did not indicate the end of the body.
             // Send an empty body with more_body = false to indicate the end of the body.
             let msg = ASGIReceiveEvent::new_http_request(Bytes::new(), false);
-            asgi_app.send_to(msg).await?;
+            send_to_app.push(msg).await?;
         }
 
         Ok(())
     }
 
-    async fn make_response(&self, mut asgi_app: CalledApplication) -> Result<Response> {
+    async fn make_response(&self, mut receive_from_app: ReceiveFromApp) -> Result<Response> {
         let timeout = Duration::from_secs(self.timeout_secs);
 
-        let response_start_event = match asgi_app.receive_from().await {
+        let response_start_event = match tokio::time::timeout(timeout, receive_from_app.next()).await? {
             Ok(ASGISendEvent::HTTPResponseStart(msg)) => msg,
-            Ok(msg) => return Err(Error::unexpected_asgi_message(Box::new(msg))),
+            Ok(msg) => return Err(Error::unexpected_asgi_message(Arc::new(msg))),
             Err(e) => return Err(e),
         };
 
@@ -83,18 +94,14 @@ impl HTTPHandler {
             let mut more_data = true;
             loop {
                 if !more_data {
-                    // If sending the disconnect event fails, it's because the application
-                    // cannot receive any more messages. We don't care...
-                    _ = asgi_app.send_to(ASGIReceiveEvent::new_http_disconnect()).await;
-                    asgi_app.close();
                     break
                 }
-                match tokio::time::timeout(timeout, asgi_app.receive_from()).await? {
+                match tokio::time::timeout(timeout, receive_from_app.next()).await? {
                     Ok(ASGISendEvent::HTTPResponseBody(msg)) => {
                         more_data = msg.more_body;
                         yield Ok(Frame::data(msg.body))
                     },
-                    Ok(msg) => yield Err(Error::unexpected_asgi_message(Box::new(msg))),
+                    Ok(msg) => yield Err(Error::unexpected_asgi_message(Arc::new(msg))),
                     Err(e) => yield Err(e),
                 }
             }
@@ -220,9 +227,7 @@ mod tests {
             .await;
 
         assert!(response.is_err_and(|e| {
-            // TODO: is this ok?
-            e.to_string() == "Application is not running"
-            // e.to_string() == "Application error: TestError(\"Immediate error\")"
+            e.to_string() == "Application error: TestError(\"Immediate error\")"
         }));
     }
 
@@ -239,9 +244,7 @@ mod tests {
 
         assert!(response.is_err_and(
             |e| {
-                // TODO: is this ok?
-                e.to_string() == "Application is not running"
-                // e.to_string() == "Application error: TestError(\"Error in loop\")"
+                e.to_string() == "Application error: TestError(\"Error in loop\")"
             }
         ));
     }
@@ -257,9 +260,7 @@ mod tests {
             .serve(ErrorInBodyLoopApp {}, request, build_conn_info(), MockState {})
             .await;
 
-        let body = response.unwrap().into_body().collect().await;
-
-        assert!(body.is_err_and(|e| {
+        assert!(response.is_err_and(|e| {
             e.to_string() == "Application error: TestError(\"Error in loop\")"
         }))
     }
@@ -274,7 +275,7 @@ mod tests {
         let response = handler
             .serve(ErrorInDataStreamApp {}, request, build_conn_info(), MockState {})
             .await;
-        
+
         let body = response.unwrap().into_body().collect().await;
 
         assert!(body.is_err_and(
@@ -300,5 +301,21 @@ mod tests {
         let headers = response.headers();
         assert!(headers.get("test").and_then(|v| Some(v.to_str().unwrap())) == Some("header"));
         assert!(headers.get("another").and_then(|v| Some(v.to_str().unwrap())) == Some("header"));
+    }
+
+    #[tokio::test]
+    async fn test_backpressure_timeout() {
+        let handler = HTTPHandler::new(1);
+        let request = Request::builder()
+            .body("hello world".to_string())
+            .expect("Failed to build request");
+
+        let response = handler
+            .serve(WaitApp {}, request, build_conn_info(), MockState {})
+            .await;
+
+        assert!(response.is_err_and(|e| {
+            e.to_string() == "ASGI await timeout elapsed" 
+        }));
     }
 }

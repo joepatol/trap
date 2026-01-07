@@ -1,4 +1,5 @@
 use std::io;
+use std::sync::Arc;
 use std::fmt::{Debug, Display};
 
 use thiserror::Error;
@@ -10,25 +11,24 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub trait DebugDisplay: Debug + Display {}
 impl<T: Debug + Display> DebugDisplay for T {}
 
-
 // Errors the ASGI server could raise
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum Error {
     #[error("{0}")]
     Custom(String),
 
     #[error(transparent)]
-    Hyper(#[from] hyper::Error),
+    Hyper(#[from] Arc<hyper::Error>),
 
     #[error(transparent)]
-    HTTP(#[from] http::Error),
+    HTTP(#[from] Arc<http::Error>),
 
     #[error(transparent)]
-    IO(#[from] io::Error),
+    IO(#[from] Arc<io::Error>),
 
     #[error("Unexpected ASGI message received. {msg:?}")]
     UnexpectedASGIMessage {
-        msg: Box<dyn DebugDisplay + Send + Sync>,
+        msg: Arc<dyn DebugDisplay + Send + Sync>,
     },
 
     #[error(transparent)]
@@ -41,11 +41,11 @@ pub enum Error {
     Disconnect,
 
     #[error(transparent)]
-    WebsocketError(#[from] fastwebsockets::WebSocketError),
+    WebsocketError(#[from] Arc<fastwebsockets::WebSocketError>),
 
     #[error("Application error: {msg}")]
     ApplicationError { 
-        msg: Box<dyn DebugDisplay + Send + Sync> 
+        msg: Arc<dyn DebugDisplay + Send + Sync> 
     },
 
     #[error("Application is not running")]
@@ -55,7 +55,7 @@ pub enum Error {
     DisconnectedClient(#[from] SendError<ASGIReceiveEvent>),
 
     #[error("ASGI await timeout elapsed")]
-    Timeout(#[from] tokio::time::error::Elapsed),
+    Timeout(#[from] Arc<tokio::time::error::Elapsed>),
 }
 
 impl Error {
@@ -63,7 +63,7 @@ impl Error {
         Self::Custom(val.to_string())
     }
 
-    pub fn application_error(msg: Box<dyn DebugDisplay + Send + Sync>) -> Self {
+    pub fn application_error(msg: Arc<dyn DebugDisplay + Send + Sync>) -> Self {
         Self::ApplicationError { msg }
     }
 
@@ -71,7 +71,7 @@ impl Error {
         Self::ApplicationNotRunning
     }
 
-    pub fn unexpected_asgi_message(msg: Box<dyn DebugDisplay + Send + Sync>) -> Self {
+    pub fn unexpected_asgi_message(msg: Arc<dyn DebugDisplay + Send + Sync>) -> Self {
         Self::UnexpectedASGIMessage { msg }
     }
 }
@@ -79,5 +79,35 @@ impl Error {
 impl From<&str> for Error {
     fn from(value: &str) -> Self {
         Self::custom(value.to_string())
+    }
+}
+
+impl From<hyper::Error> for Error {
+    fn from(value: hyper::Error) -> Self {
+        Self::Hyper(Arc::new(value))
+    }
+}
+
+impl From<http::Error> for Error {
+    fn from(value: http::Error) -> Self {
+        Self::HTTP(Arc::new(value))
+    }
+}
+
+impl From<io::Error> for Error {
+    fn from(value: io::Error) -> Self {
+        Self::IO(Arc::new(value))
+    }
+}
+
+impl From<fastwebsockets::WebSocketError> for Error {
+    fn from(value: fastwebsockets::WebSocketError) -> Self {
+        Self::WebsocketError(Arc::new(value))
+    }
+}
+
+impl From<tokio::time::error::Elapsed> for Error {
+    fn from(value: tokio::time::error::Elapsed) -> Self {
+        Self::Timeout(Arc::new(value))
     }
 }

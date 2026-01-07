@@ -16,7 +16,7 @@ use tower_http::ServiceBuilderExt;
 
 use crate::types::ResponseStatus;
 
-use super::error::Result;
+use super::errors::Result;
 use super::protocols::LifespanHandler;
 use super::service::ArasASGIService;
 use super::types::{ConnectionInfo, Request};
@@ -136,7 +136,7 @@ where
     type Output = Result<()>;
 
     async fn run(&self, application: A, state: A::State) -> Self::Output {
-        let lifespan_handler = LifespanHandler::new(self.backpressure_timeout)
+        let mut lifespan_handler = LifespanHandler::new(self.backpressure_timeout)
             .startup(application.clone(), state.clone())
             .await?;
 

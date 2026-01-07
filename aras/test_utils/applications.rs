@@ -176,6 +176,20 @@ impl ASGIApplication for ImmediateReturnApp {
 }
 
 #[derive(Clone, Debug)]
+pub struct WaitApp;
+
+impl ASGIApplication for WaitApp {
+    type Error = TestError;
+    type State = MockState;
+
+    async fn call(&self, _scope: Scope<MockState>, receive: ReceiveFn, _send: SendFn) -> Result<(), Self::Error> {
+        _ = (receive)().await;
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct ErrorOnCallApp;
 
 impl ASGIApplication for ErrorOnCallApp {
@@ -194,8 +208,7 @@ impl ASGIApplication for ErrorInLoopApp {
     type Error = TestError;
     type State = MockState;
     
-    async fn call(&self, _scope: Scope<Self::State>, receive: ReceiveFn, _send: SendFn) -> Result<(), Self::Error> {
-        _ = receive().await;
+    async fn call(&self, _scope: Scope<Self::State>, _receive: ReceiveFn, _send: SendFn) -> Result<(), Self::Error> {
         Err(TestError { 0: "Error in loop".into() })
     }
 }
@@ -244,11 +257,14 @@ impl ASGIApplication for ErrorInDataStreamApp {
         _ = receive().await;
         let res_start_msg = ASGISendEvent::new_http_response_start(200, headers);
         send(res_start_msg).await.map_err(|e| TestError { 0: e.to_string() })?;
+        _ = receive().await;
         let first_body = ASGISendEvent::new_http_response_body(Bytes::from("hello"), true);
         send(first_body).await.map_err(|e| TestError { 0: e.to_string() })?;
         // Instead of more body an invalid message is sent to mimick the error
         let invalid = ASGISendEvent::new_startup_complete();
         send(invalid).await.map_err(|e| TestError { 0: e.to_string() })?;
+        let second_body = ASGISendEvent::new_http_response_body(Bytes::from("hello"), true);
+        send(second_body).await.map_err(|e| TestError { 0: e.to_string() })?;
         Ok(())
     }
 }

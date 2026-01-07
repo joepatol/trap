@@ -9,7 +9,7 @@ use http::Request as HTTPRequest;
 use http::Response as HTTPResponse;
 use http_body_util::combinators::BoxBody;
 
-use crate::error::{Error, Result};
+use crate::errors::{Error, Result};
 
 /// Data structure containing information on the current connection
 #[derive(Clone, Debug)]

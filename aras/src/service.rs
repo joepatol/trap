@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::fmt::Display;
 use std::task::{Poll, Context};
 
@@ -10,7 +11,7 @@ use log::error;
 use tower::Service;
 use std::future::Future;
 
-use crate::error::{Result as ArasResult, Error};
+use crate::errors::{Result as ArasResult, Error};
 use crate::protocols::{HTTPHandler, WebsocketHandler};
 use crate::types::{ServiceFuture, ConnectionInfo, Response};
 
@@ -75,7 +76,7 @@ async fn handle_error(fut: impl Future<Output = ArasResult<Response>>) -> ArasRe
                 .header(hyper::header::CONTENT_LENGTH, body_text.len())
                 .header(hyper::header::CONTENT_TYPE, "text/plain")
                 .body(body);
-            Ok(response?)
+            Ok(response.map_err(|e| Arc::new(e))?)
         }
     }
 }
