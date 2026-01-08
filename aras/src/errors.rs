@@ -3,8 +3,6 @@ use std::sync::Arc;
 use std::fmt::{Debug, Display};
 
 use thiserror::Error;
-use asgispec::prelude::*;
-use async_channel::{SendError, RecvError};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -31,12 +29,6 @@ pub enum Error {
         msg: Arc<dyn DebugDisplay + Send + Sync>,
     },
 
-    #[error(transparent)]
-    ChannelSendError(#[from] SendError<ASGISendEvent>),
-
-    #[error(transparent)]
-    ChannelReceiveError(#[from] RecvError),
-
     #[error("Disconnect")]
     Disconnect,
 
@@ -50,9 +42,6 @@ pub enum Error {
 
     #[error("Application is not running")]
     ApplicationNotRunning,
-
-    #[error(transparent)]
-    DisconnectedClient(#[from] SendError<ASGIReceiveEvent>),
 
     #[error("ASGI await timeout elapsed")]
     Timeout(#[from] Arc<tokio::time::error::Elapsed>),

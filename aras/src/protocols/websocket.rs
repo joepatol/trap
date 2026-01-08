@@ -227,3 +227,41 @@ async fn do_server_iteration(frame: Frame<'_>, send_to: &mut impl SendToASGIApp)
         _ => Ok(true),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use http::Request;
+    use asgispec::prelude::*;
+    use super::WebsocketHandler;
+
+    use crate::communication_mocks::{DeterministicReceiveFromApp, SendToAppCollector};
+
+    fn build_websocket_request() -> Request<String> {
+        Request::builder()
+            .header("Connection", "Upgrade")
+            .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
+            .header("sec-websocket-version", "13")
+            .body("".to_string())
+            .expect("Failed to build request")
+    }
+
+    #[tokio::test]
+    async fn test_accept_websocket_connection() {
+        let handler = WebsocketHandler::new(std::time::Duration::from_secs(5));
+        let request = build_websocket_request();
+
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+           Ok(ASGISendEvent::new_websocket_accept(None, vec![])),
+        ]);
+
+        let response = handler
+            .handle(send_to, receive_from, request)
+            .await;
+
+        println!("Response: {:?}", response);
+
+        assert!(response.is_ok());
+        assert!(response.unwrap().status() == http::StatusCode::SWITCHING_PROTOCOLS);
+    }
+}

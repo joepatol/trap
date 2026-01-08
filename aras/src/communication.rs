@@ -1,3 +1,4 @@
+use core::panic;
 use std::future::Future;
 use std::sync::Arc;
 
@@ -27,37 +28,35 @@ pub(crate) trait ReceiveFromASGIApp: Send + Sync {
 #[derive(Clone, Debug)]
 struct ApplicationState {
     error_value: Option<Error>,
-    receiver: Arc<Mutex<OneshotReceiver<Result<()>>>>,
+    receiver: Arc<Mutex<Option<OneshotReceiver<Result<()>>>>>,
 }
 
 impl ApplicationState {
     pub fn new(receiver: OneshotReceiver<Result<()>>) -> Self {
         Self {
-            receiver: Arc::new(Mutex::new(receiver)),
+            receiver: Arc::new(Mutex::new(Some(receiver))),
             error_value: None,
         }
     }
 
-    async fn check(&mut self) {
-        let mut lock = self.receiver.lock().await;
-        match lock.try_recv() {
-            Ok(Ok(_)) => {
-                self.error_value = Some(Error::application_not_running());
-            }
-            Ok(Err(e)) => {
-                self.error_value = Some(e);
-            }
-            // TODO: what if dropped before sending a value
-            _ => { /* Still running */ }
-        }
-    }
-
-    pub async fn ensure_ok(&mut self) -> Option<Error> {
+    pub async fn wait_for_completion(&mut self) -> Error {
         if self.error_value.is_some() {
-            return self.error_value.clone();
+            return self.error_value.clone().unwrap();
         };
-        self.check().await;
-        self.error_value.clone()
+
+        let maybe_recv = self.receiver.lock().await.take();
+        
+        if maybe_recv.is_none() {
+            panic!("ApplicationState implementation incorrect: receiver already taken but error_value is None");
+        }
+
+        self.error_value = match maybe_recv.unwrap().await {
+            Ok(Ok(_)) => Some(Error::application_not_running()),
+            Ok(Err(e)) => Some(e),
+            Err(_) => Some(Error::application_not_running()),
+        };
+
+        self.error_value.clone().unwrap()
     }
 }
 
@@ -69,18 +68,13 @@ pub(crate) struct ReceiveFromApp {
 
 impl ReceiveFromASGIApp for ReceiveFromApp {
     async fn receive(&mut self) -> Result<ASGISendEvent> {
-        // Yield to allow other tasks to progress, especially the application task
-        // since it could have just send an event
-        tokio::task::yield_now().await;
-
-        if !self.receiver.is_empty() {
-            return self.receiver.recv().await.map_err(Error::from);
+        let message = self.receiver.recv().await;
+    
+        if message.is_err() {
+            Err(self.state.wait_for_completion().await)
+        } else {
+            Ok(message.unwrap())
         }
-
-        if let Some(err) = self.state.ensure_ok().await {
-            return Err(err);
-        }
-        self.receiver.recv().await.map_err(Error::from)
     }
 }
 
@@ -92,14 +86,13 @@ pub(crate) struct SendToApp {
 
 impl SendToASGIApp for SendToApp {
     async fn send(&mut self, message: ASGIReceiveEvent) -> Result<()> {
-        // Yield to allow other tasks to progress, especially the application task
-        // since it could have just returned
-        tokio::task::yield_now().await;
+        let could_send = self.sender.send(message).await;
 
-        if let Some(err) = self.state.ensure_ok().await {
-            return Err(err);
+        if could_send.is_err() {
+            Err(self.state.wait_for_completion().await)
+        } else {
+            Ok(())
         }
-        self.sender.send(message).await.map_err(Error::from)
     }
 }
 
@@ -224,7 +217,7 @@ mod tests {
         let startup_event = ASGIReceiveEvent::new_lifespan_startup();
         let result = send_to_app.send(startup_event).await;
 
-        assert!(result.is_err_and(|e| { e.to_string() == "Application is not running" }));
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -257,9 +250,7 @@ mod tests {
         let startup_event = ASGIReceiveEvent::new_lifespan_startup();
         let result = send_to_app.send(startup_event).await;
 
-        assert!(result.is_err_and(|e| {
-            e.to_string() == "Application error: TestError(\"Immediate error\")" 
-        }));
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
