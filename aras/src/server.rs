@@ -76,12 +76,13 @@ where
     type Output = Result<()>;
 
     async fn run(&self, application: A, state: A::State) -> Self::Output {
+        let timeout = Duration::from_secs(self.backpressure_timeout);
         let scope_factory: ScopeFactory<A> = ScopeFactory::new(state);
         let communication_factory = CommunicationFactory::new(application);
 
         let scope = scope_factory.build_lifespan();
         let (send_to_app, receive_from_app) = communication_factory.build(scope);
-        let mut lifespan_handler = LifespanHandler::new(self.backpressure_timeout)
+        let mut lifespan_handler = LifespanHandler::new(timeout)
             .startup(send_to_app, receive_from_app)
             .await?;
 

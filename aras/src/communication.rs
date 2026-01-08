@@ -69,6 +69,10 @@ pub(crate) struct ReceiveFromApp {
 
 impl ReceiveFromASGIApp for ReceiveFromApp {
     async fn receive(&mut self) -> Result<ASGISendEvent> {
+        // Yield to allow other tasks to progress, especially the application task
+        // since it could have just send an event
+        tokio::task::yield_now().await;
+
         if !self.receiver.is_empty() {
             return self.receiver.recv().await.map_err(Error::from);
         }
@@ -88,6 +92,10 @@ pub(crate) struct SendToApp {
 
 impl SendToASGIApp for SendToApp {
     async fn send(&mut self, message: ASGIReceiveEvent) -> Result<()> {
+        // Yield to allow other tasks to progress, especially the application task
+        // since it could have just returned
+        tokio::task::yield_now().await;
+
         if let Some(err) = self.state.ensure_ok().await {
             return Err(err);
         }
@@ -156,76 +164,117 @@ impl<A: ASGIApplication + 'static> CommunicationFactory<A> {
     }
 }
 
-    // #[tokio::test]
-    // async fn test_app_returns_when_called() {
-    //     let handler = HTTPHandler::new(10);
-    //     let request = Request::builder()
-    //         .body("hello world".to_string())
-    //         .expect("Failed to build request");
+#[cfg(test)]
+mod tests {
+    use asgispec::prelude::*;
+    use super::CommunicationFactory;
+    use crate::communication::{SendToASGIApp, ReceiveFromASGIApp};
+    use crate::scope::ScopeFactory;
 
-    //     let response = handler
-    //         .serve(ImmediateReturnApp {}, request, build_conn_info(), MockState {})
-    //         .await;
+    use crate::application_mocks::*;
 
-    //     assert!(response.is_err_and(|e| { e.to_string() == "Application is not running" }));
-    // }
+    #[tokio::test]
+    async fn test_send_lifespan_startup_event() {
+        let app = LifespanProtocolApp::new();
+        let state = MockState::new();
 
-    // #[tokio::test]
-    // async fn test_app_fails_when_called() {
-    //     let handler = HTTPHandler::new(10);
-    //     let request = Request::builder()
-    //         .body("hello world".to_string())
-    //         .expect("Failed to build request");
+        let comm_factory = CommunicationFactory::new(app);
+        let scope_factory: ScopeFactory<LifespanProtocolApp>  = ScopeFactory::new(state);
+        let scope = scope_factory.build_lifespan();
 
-    //     let response = handler
-    //         .serve(ErrorOnCallApp {}, request, build_conn_info(), MockState {})
-    //         .await;
+        let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
 
-    //     assert!(response.is_err_and(|e| { e.to_string() == "Application error: TestError(\"Immediate error\")" }));
-    // }
+        let startup_event = ASGIReceiveEvent::new_lifespan_startup();
+        send_to_app.send(startup_event).await.unwrap();
 
-    // #[tokio::test]
-    // async fn test_app_raises_error_while_communicating() {
-    //     let handler = HTTPHandler::new(10);
-    //     let request = Request::builder()
-    //         .body("hello world".to_string())
-    //         .expect("Failed to build request");
+        let received_event = receive_from_app.receive().await.unwrap();
+        assert!(received_event == ASGISendEvent::new_startup_complete());
+    }
 
-    //     let response = handler
-    //         .serve(ErrorInLoopApp {}, request, build_conn_info(), MockState {})
-    //         .await;
+    #[tokio::test]
+    async fn test_send_lifespan_shutdown_event() {
+        let app = LifespanProtocolApp::new();
+        let state = MockState::new();
 
-    //     assert!(response.is_err_and(|e| { e.to_string() == "Application error: TestError(\"Error in loop\")" }));
-    // }
+        let comm_factory = CommunicationFactory::new(app);
+        let scope_factory: ScopeFactory<LifespanProtocolApp>  = ScopeFactory::new(state);
+        let scope = scope_factory.build_lifespan();
 
-    // #[tokio::test]
-    // async fn test_app_raises_error_while_sending_body() {
-    //     let handler = HTTPHandler::new(10);
-    //     let request = Request::builder()
-    //         .body("hello world".to_string())
-    //         .expect("Failed to build request");
+        let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
 
-    //     let response = handler
-    //         .serve(ErrorInBodyLoopApp {}, request, build_conn_info(), MockState {})
-    //         .await;
+        let shutdown_event = ASGIReceiveEvent::new_lifespan_shutdown();
+        send_to_app.send(shutdown_event).await.unwrap();
 
-    //     assert!(response.is_err_and(|e| { e.to_string() == "Application error: TestError(\"Error in loop\")" }))
-    // }
+        let received_event = receive_from_app.receive().await.unwrap();
+        assert!(received_event == ASGISendEvent::new_shutdown_complete());
+    }
 
-    // #[tokio::test]
-    // async fn test_error_while_streaming_body() {
-    //     let handler = HTTPHandler::new(10);
-    //     let request = Request::builder()
-    //         .body("hello world".to_string())
-    //         .expect("Failed to build request");
 
-    //     let response = handler
-    //         .serve(ErrorInDataStreamApp {}, request, build_conn_info(), MockState {})
-    //         .await;
+    #[tokio::test]
+    async fn test_app_returns_without_sending_message_send_to() {
+        let app = ImmediateReturnApp::new();
+        let state = MockState::new();
 
-    //     let body = response.unwrap().into_body().collect().await;
+        let comm_factory = CommunicationFactory::new(app);
+        let scope_factory: ScopeFactory<ImmediateReturnApp>  = ScopeFactory::new(state);
+        let scope = scope_factory.build_lifespan();
 
-    //     assert!(body.is_err_and(|e| {
-    //         e.to_string() == "Unexpected ASGI message received. StartupComplete(LifespanStartupCompleteEvent)"
-    //     }))
-    // }
+        let (mut send_to_app, _) = comm_factory.build(scope);
+
+        let startup_event = ASGIReceiveEvent::new_lifespan_startup();
+        let result = send_to_app.send(startup_event).await;
+
+        assert!(result.is_err_and(|e| { e.to_string() == "Application is not running" }));
+    }
+
+    #[tokio::test]
+    async fn test_app_returns_without_sending_message_receive_from() {
+        let app = ImmediateReturnApp::new();
+        let state = MockState::new();
+
+        let comm_factory = CommunicationFactory::new(app);
+        let scope_factory: ScopeFactory<ImmediateReturnApp>  = ScopeFactory::new(state);
+        let scope = scope_factory.build_lifespan();
+
+        let (_, mut receive_from_app) = comm_factory.build(scope);
+
+        let result = receive_from_app.receive().await;
+
+        assert!(result.is_err_and(|e| { e.to_string() == "Application is not running" }));
+    }
+
+    #[tokio::test]
+    async fn test_app_raises_an_error_send_to() {
+        let app = ErrorApp::new();
+        let state = MockState::new();
+
+        let comm_factory = CommunicationFactory::new(app);
+        let scope_factory: ScopeFactory<ErrorApp>  = ScopeFactory::new(state);
+        let scope = scope_factory.build_lifespan();
+
+        let (mut send_to_app, _) = comm_factory.build(scope);
+
+        let startup_event = ASGIReceiveEvent::new_lifespan_startup();
+        let result = send_to_app.send(startup_event).await;
+
+        assert!(result.is_err_and(|e| {
+            e.to_string() == "Application error: TestError(\"Immediate error\")" 
+        }));
+    }
+
+    #[tokio::test]
+    async fn test_app_raises_an_error_receive_from() {
+        let app = ErrorApp::new();
+        let state = MockState::new();
+
+        let comm_factory = CommunicationFactory::new(app);
+        let scope_factory: ScopeFactory<ErrorApp>  = ScopeFactory::new(state);
+        let scope = scope_factory.build_lifespan();
+
+        let (_, mut receive_from_app) = comm_factory.build(scope);
+
+        let result = receive_from_app.receive().await;
+
+        assert!(result.is_err_and(|e| { e.to_string() == "Application error: TestError(\"Immediate error\")" }));
+    }
+}

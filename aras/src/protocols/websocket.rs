@@ -24,7 +24,7 @@ use crate::types::Response;
 
 #[derive(Constructor)]
 pub(crate) struct WebsocketHandler {
-    timeout_secs: u64,
+    timeout: Duration,
 }
 
 impl WebsocketHandler {
@@ -65,11 +65,10 @@ impl WebsocketHandler {
         send_to: &mut impl SendToASGIApp,
         receive_from: &mut impl ReceiveFromASGIApp,
     ) -> Result<(bool, Response)> {
-        let dur = Duration::from_secs(self.timeout_secs);
         let mut builder = hyper::Response::builder();
         send_to.send(ASGIReceiveEvent::new_websocket_connect()).await?;
 
-        match tokio::time::timeout(dur, receive_from.receive()).await {
+        match tokio::time::timeout(self.timeout, receive_from.receive()).await {
             Ok(Ok(ASGISendEvent::WebsocketAccept(msg))) => {
                 let body = Full::new(Vec::<u8>::new().into())
                     .map_err(|never| match never {})
@@ -100,7 +99,6 @@ impl WebsocketHandler {
         receive_from: &mut impl ReceiveFromASGIApp,
         upgraded_io: UpgradeFut,
     ) -> Result<()> {
-        let dur = Duration::from_secs(self.timeout_secs);
         let ws = Arc::new(Mutex::new(FragmentCollector::new(upgraded_io.await?)));
 
         loop {
@@ -109,7 +107,7 @@ impl WebsocketHandler {
 
             let iteration: WsIteration<'_> = tokio::select! {
                 out = ws_locked.read_frame() => WsIteration::ReceiveClient(out),
-                out = tokio::time::timeout(dur, receive_from.receive()) => WsIteration::ReceiveApplication(out),
+                out = tokio::time::timeout(self.timeout, receive_from.receive()) => WsIteration::ReceiveApplication(out),
             };
 
             drop(ws_locked); // Drop the lock so it can be acquired for writing

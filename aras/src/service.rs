@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use asgispec::prelude::*;
 use http::Request;
@@ -68,16 +69,17 @@ where
     }
 
     fn call(&mut self, request: Request<B>) -> Self::Future {
+        let timeout = Duration  ::from_secs(self.asgi_timeout_secs);
         if is_upgrade_request(&request) {
             let scope: Scope<<A as ASGIApplication>::State> = self.scope_factory.build_websocket(&self.connection, &request);
             let (send_to_app, receive_from_app) = self.communication_factory.build(scope);
-            let handler = WebsocketHandler::new(self.asgi_timeout_secs);
+            let handler = WebsocketHandler::new(timeout);
             let fut = handler.handle(send_to_app, receive_from_app, request);
             Box::pin(handle_error(fut))
         } else {
             let scope = self.scope_factory.build_http(&self.connection, &request);
             let (send_to_app, receive_from_app) = self.communication_factory.build(scope);
-            let handler = HTTPHandler::new(self.asgi_timeout_secs);
+            let handler = HTTPHandler::new(timeout);
             let fut = handler.handle(send_to_app, receive_from_app, request);
             Box::pin(handle_error(fut))
         }
