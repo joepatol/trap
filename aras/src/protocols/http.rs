@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use asgispec::prelude::*;
-use asgispec::scope::HTTPScope;
 use bytes::{Buf, Bytes};
 use derive_more::derive::Constructor;
 use futures::StreamExt;
@@ -12,9 +11,9 @@ use http_body_util::{BodyExt, StreamBody};
 use hyper::body::{Body, Frame};
 use hyper::Request;
 
-use crate::communication::{CommunicatorFactory, ReceiveFromApp, SendToApp};
+use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
 use crate::errors::{Error, Result};
-use crate::types::{ConnectionInfo, Response};
+use crate::types::Response;
 
 #[derive(Constructor)]
 pub(crate) struct HTTPHandler {
@@ -22,23 +21,16 @@ pub(crate) struct HTTPHandler {
 }
 
 impl HTTPHandler {
-    pub async fn serve<A, B>(
+    pub async fn handle<B>(
         self,
-        application: A,
+        mut send_to_app: impl SendToASGIApp,
+        receive_from_app: impl ReceiveFromASGIApp + 'static,
         request: Request<B>,
-        conn: ConnectionInfo,
-        state: A::State,
     ) -> Result<Response>
     where
-        A: ASGIApplication + 'static,
         B: Body + Send + 'static,
         B::Error: Display,
     {
-        let factory = CommunicatorFactory::new();
-        let scope = create_http_scope(&request, &conn, state);
-        
-        let (mut send_to_app, receive_from_app) = factory.build(application, scope);
-
         let response = tokio::try_join!(
             self.read_body(&mut send_to_app, request.into_body()),
             self.make_response(receive_from_app),
@@ -46,12 +38,12 @@ impl HTTPHandler {
 
         // If sending the disconnect event fails, it's because the application
         // cannot receive any more messages. We don't care...
-        _ = send_to_app.push(ASGIReceiveEvent::new_http_disconnect()).await;
+        _ = send_to_app.send(ASGIReceiveEvent::new_http_disconnect()).await;
 
         Ok(response?.1)
     }
 
-    async fn read_body<B>(&self, send_to_app: &mut SendToApp, body: B) -> Result<()>
+    async fn read_body<B>(&self, send_to_app: &mut impl SendToASGIApp, body: B) -> Result<()>
     where
         B: Body + Send + 'static,
         B::Error: Display,
@@ -68,23 +60,23 @@ impl HTTPHandler {
             more_body = stream.size_hint().1.map_or(true, |u| u > 0);
 
             let msg = ASGIReceiveEvent::new_http_request(bytes, more_body);
-            send_to_app.push(msg).await?;
+            send_to_app.send(msg).await?;
         }
 
         if more_body {
             // The stream terminated but the size hint did not indicate the end of the body.
             // Send an empty body with more_body = false to indicate the end of the body.
             let msg = ASGIReceiveEvent::new_http_request(Bytes::new(), false);
-            send_to_app.push(msg).await?;
+            send_to_app.send(msg).await?;
         }
 
         Ok(())
     }
 
-    async fn make_response(&self, mut receive_from_app: ReceiveFromApp) -> Result<Response> {
+    async fn make_response(&self, mut receive_from_app: impl ReceiveFromASGIApp + 'static) -> Result<Response> {
         let timeout = Duration::from_secs(self.timeout_secs);
 
-        let response_start_event = match tokio::time::timeout(timeout, receive_from_app.next()).await? {
+        let response_start_event = match tokio::time::timeout(timeout, receive_from_app.receive()).await? {
             Ok(ASGISendEvent::HTTPResponseStart(msg)) => msg,
             Ok(msg) => return Err(Error::unexpected_asgi_message(Arc::new(msg))),
             Err(e) => return Err(e),
@@ -96,7 +88,7 @@ impl HTTPHandler {
                 if !more_data {
                     break
                 }
-                match tokio::time::timeout(timeout, receive_from_app.next()).await? {
+                match tokio::time::timeout(timeout, receive_from_app.receive()).await? {
                     Ok(ASGISendEvent::HTTPResponseBody(msg)) => {
                         more_data = msg.more_body;
                         yield Ok(Frame::data(msg.body))
@@ -117,205 +109,253 @@ impl HTTPHandler {
     }
 }
 
-fn create_http_scope<B, S: State>(request: &Request<B>, connection_info: &ConnectionInfo, state: S) -> Scope<S> {
-    let scope = HTTPScope::new(
-        ASGIScope::default(),
-        format!("{:?}", request.version()),
-        request.method().as_str().to_owned(),
-        String::from("http"),
-        request.uri().path().to_owned(),
-        request.uri().to_string().as_bytes().to_vec(),
-        request.uri().query().unwrap_or("").as_bytes().to_vec(),
-        String::from(""), // Optional, default for now
-        request
-            .headers()
-            .into_iter()
-            .map(|(name, value)| (name.as_str().as_bytes().to_vec(), value.as_bytes().to_vec()))
-            .collect(),
-        Some((connection_info.client_ip.to_owned(), connection_info.client_port)),
-        Some((connection_info.server_ip.to_owned(), connection_info.server_port)),
-        Some(state),
-    );
-    scope.into()
-}
-
 #[cfg(test)]
 mod tests {
-    use std::net::SocketAddrV4;
-
-    use http::StatusCode;
+    use http::Request;
+    use bytes::Bytes;
     use http_body_util::BodyExt;
-    use hyper::Request;
+    use asgispec::prelude::*;
 
-    use crate::applications::*;
-    use crate::types::ConnectionInfo;
+    use crate::ArasError;
+    use crate::communication_mocks::{DeterministicReceiveFromApp, SendToAppCollector, SendToAppFail};
     use crate::types::Response;
-
     use super::HTTPHandler;
 
-    pub fn build_conn_info() -> ConnectionInfo {
-        ConnectionInfo::new(
-            std::net::SocketAddr::V4(SocketAddrV4::new([127, 0, 0, 1].into(), 2)),
-            std::net::SocketAddr::V4(SocketAddrV4::new([0, 0, 0, 0].into(), 80)),
-        )
+    fn build_request(body: &str) -> Request<String> {
+        Request::builder()
+            .body(body.to_string())
+            .expect("Failed to build request")
     }
 
     async fn response_to_body_string(response: Response) -> String {
-        String::from_utf8(response.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
+        let body_bytes = response
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec();
+        String::from_utf8(body_bytes).unwrap()
     }
 
     #[tokio::test]
-    async fn test_echo_request_body() {
+    async fn test_request_messages_sent_to_app_ok() {
         let handler = HTTPHandler::new(10);
-        let request = Request::builder()
-            .body("hello world".to_string())
-            .expect("Failed to build request");
+        let request = build_request("");
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::default();
 
-        let response = handler
-            .serve(EchoApp::new(), request, build_conn_info(), MockState {})
+        let _ = handler
+            .handle(send_to.clone(), receive_from, request)
             .await
             .unwrap();
 
-        assert!(response.status() == StatusCode::OK);
-        assert!(response_to_body_string(response).await == "hello world")
+        let messages = send_to.get_messages().await;
+        println!("{:?}", messages);
+
+        assert!(messages.len() == 3);
+    }
+
+    #[tokio::test]
+    async fn test_sent_body_is_ok() {
+        let handler = HTTPHandler::new(10);
+        let request = build_request("hello world");
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::default();
+
+        let _ = handler
+            .handle(send_to.clone(), receive_from, request)
+            .await
+            .unwrap();
+
+        let messages = send_to.get_messages().await;
+
+        // read the body from the messages
+        let mut body = String::new();
+        for message in &messages {
+            if let ASGIReceiveEvent::HTTPRequest(msg) = message {
+                body.push_str(&String::from_utf8_lossy(&msg.body));
+            }
+        }
+
+        assert!(body == "hello world");
+    }
+
+    #[tokio::test]
+    async fn test_send_fails() {
+        let handler = HTTPHandler::new(10);
+        let request = build_request("hello world");
+        let send_to = SendToAppFail::new();
+        let receive_from = DeterministicReceiveFromApp::default();
+
+        let response = handler
+            .handle(send_to, receive_from, request)
+            .await;
+
+        assert!(response.is_err_and(|e| { e.to_string() == "SendToAppFail always fails" }));
+    }
+
+    #[tokio::test]
+    async fn test_last_message_is_disconnect() {
+        let handler = HTTPHandler::new(10);
+        let request = build_request("hello world");
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::default();
+
+        let _ = handler
+            .handle(send_to.clone(), receive_from, request)
+            .await
+            .unwrap();
+
+        let messages = send_to.get_messages().await;
+        assert!(messages[messages.len() - 1] == ASGIReceiveEvent::new_http_disconnect());
+    }
+
+    #[tokio::test]
+    async fn test_response_ok() {
+        let handler = HTTPHandler::new(10);
+        let request = build_request("");
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_http_response_start(200, vec![])),
+            Ok(ASGISendEvent::new_http_response_body(Bytes::from("app sent this body"), false)),
+        ]);
+
+        let response = handler
+            .handle(send_to, receive_from, request)
+            .await
+            .unwrap();
+
+        assert!(response.status() == http::StatusCode::OK);
+        assert!(response_to_body_string(response).await == "app sent this body");
     }
 
     #[tokio::test]
     async fn test_body_sent_in_parts() {
         let handler = HTTPHandler::new(10);
-        let request = Request::builder()
-            .body("hello world".to_string())
-            .expect("Failed to build request");
+        let request = build_request("");
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_http_response_start(200, vec![])),
+            Ok(ASGISendEvent::new_http_response_body(Bytes::from("part 1 "), true)),
+            Ok(ASGISendEvent::new_http_response_body(Bytes::from("part 2"), false)),
+        ]);
 
         let response = handler
-            .serve(
-                EchoApp::new_with_body("more body"),
-                request,
-                build_conn_info(),
-                MockState {},
-            )
+            .handle(send_to, receive_from, request)
             .await
             .unwrap();
 
-        assert!(response.status() == StatusCode::OK);
-        assert!(response_to_body_string(response).await == "hello worldmore body")
-    }
-
-    #[tokio::test]
-    async fn test_app_returns_when_called() {
-        let handler = HTTPHandler::new(10);
-        let request = Request::builder()
-            .body("hello world".to_string())
-            .expect("Failed to build request");
-
-        let response = handler
-            .serve(ImmediateReturnApp {}, request, build_conn_info(), MockState {})
-            .await;
-
-        assert!(response.is_err_and(|e| { e.to_string() == "Application is not running" }));
-    }
-
-    #[tokio::test]
-    async fn test_app_fails_when_called() {
-        let handler = HTTPHandler::new(10);
-        let request = Request::builder()
-            .body("hello world".to_string())
-            .expect("Failed to build request");
-
-        let response = handler
-            .serve(ErrorOnCallApp {}, request, build_conn_info(), MockState {})
-            .await;
-
-        assert!(response.is_err_and(|e| {
-            e.to_string() == "Application error: TestError(\"Immediate error\")"
-        }));
-    }
-
-    #[tokio::test]
-    async fn test_app_raises_error_while_communicating() {
-        let handler = HTTPHandler::new(10);
-        let request = Request::builder()
-            .body("hello world".to_string())
-            .expect("Failed to build request");
-
-        let response = handler
-            .serve(ErrorInLoopApp {}, request, build_conn_info(), MockState {})
-            .await;
-
-        assert!(response.is_err_and(
-            |e| {
-                e.to_string() == "Application error: TestError(\"Error in loop\")"
-            }
-        ));
-    }
-
-    #[tokio::test]
-    async fn test_app_raises_error_while_sending_body() {
-        let handler = HTTPHandler::new(10);
-        let request = Request::builder()
-            .body("hello world".to_string())
-            .expect("Failed to build request");
-
-        let response = handler
-            .serve(ErrorInBodyLoopApp {}, request, build_conn_info(), MockState {})
-            .await;
-
-        assert!(response.is_err_and(|e| {
-            e.to_string() == "Application error: TestError(\"Error in loop\")"
-        }))
-    }
-
-    #[tokio::test]
-    async fn test_error_while_streaming_body() {
-        let handler = HTTPHandler::new(10);
-        let request = Request::builder()
-            .body("hello world".to_string())
-            .expect("Failed to build request");
-
-        let response = handler
-            .serve(ErrorInDataStreamApp {}, request, build_conn_info(), MockState {})
-            .await;
-
-        let body = response.unwrap().into_body().collect().await;
-
-        assert!(body.is_err_and(
-            |e| {
-                e.to_string() == "Unexpected ASGI message received. StartupComplete(LifespanStartupCompleteEvent)"
-            }
-        ))
+        assert!(response.status() == http::StatusCode::OK);
+        assert!(response_to_body_string(response).await == "part 1 part 2");
     }
 
     #[tokio::test]
     async fn test_headers_ok() {
         let handler = HTTPHandler::new(10);
-        let request = Request::builder()
-            .body("hello world".to_string())
-            .expect("Failed to build request");
+        let request = build_request("");
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_http_response_start(
+                200,
+                vec![
+                    (String::from("test").as_bytes().to_vec(), String::from("header").as_bytes().to_vec()),
+                    (String::from("another").as_bytes().to_vec(), String::from("header").as_bytes().to_vec()),
+                ],
+            )),
+            Ok(ASGISendEvent::new_http_response_body(Bytes::from(""), false)),
+        ]);
 
         let response = handler
-            .serve(EchoApp::new(), request, build_conn_info(), MockState {})
+            .handle(send_to, receive_from, request)
             .await
             .unwrap();
 
-        assert!(response.status() == StatusCode::OK);
+        assert!(response.status() == http::StatusCode::OK);
         let headers = response.headers();
         assert!(headers.get("test").and_then(|v| Some(v.to_str().unwrap())) == Some("header"));
         assert!(headers.get("another").and_then(|v| Some(v.to_str().unwrap())) == Some("header"));
     }
 
     #[tokio::test]
-    async fn test_backpressure_timeout() {
-        let handler = HTTPHandler::new(1);
-        let request = Request::builder()
-            .body("hello world".to_string())
-            .expect("Failed to build request");
+    async fn test_receive_from_fails() {
+        let handler = HTTPHandler::new(10);
+        let request = build_request("");
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Err(ArasError::custom("ReceiveFromApp failed")),
+        ]);
 
         let response = handler
-            .serve(WaitApp {}, request, build_conn_info(), MockState {})
+            .handle(send_to, receive_from, request)
             .await;
 
         assert!(response.is_err_and(|e| {
-            e.to_string() == "ASGI await timeout elapsed" 
+            e.to_string()
+                == "ReceiveFromApp failed"
         }));
+    } 
+
+    #[tokio::test]
+    async fn test_receive_from_fails_while_streaming_body() {
+        let handler = HTTPHandler::new(10);
+        let request = build_request("");
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_http_response_start(200, vec![])),
+            Ok(ASGISendEvent::new_http_response_body(Bytes::from("part 1 "), true)),
+            Err(ArasError::custom("ReceiveFromApp failed")),
+        ]);
+
+        let response = handler
+            .handle(send_to, receive_from, request)
+            .await;
+        
+        // Response is ok, error occurs while streaming body
+        assert!(response.is_ok());
+
+        let body = response.unwrap().into_body().collect().await;
+        assert!(body.is_err_and(|e| {
+            e.to_string() == "ReceiveFromApp failed"
+        }));
+    }
+
+    #[tokio::test]
+    async fn test_invalid_asgi_message_received_while_streaming_body() {
+        let handler = HTTPHandler::new(10);
+        let request = build_request("");
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_http_response_start(200, vec![])),
+            Ok(ASGISendEvent::new_http_response_body(Bytes::from("part 1 "), true)),
+            Ok(ASGISendEvent::new_shutdown_complete()),
+        ]);
+
+        let response = handler
+            .handle(send_to, receive_from, request)
+            .await;
+        
+        // Response is ok, error occurs while streaming body
+        assert!(response.is_ok());
+
+        let body = response.unwrap().into_body().collect().await;
+        assert!(body.is_err_and(|e| {
+            println!("{}", e);
+            e.to_string() == "Unexpected ASGI message received. ShutdownComplete(LifespanShutdownCompleteEvent)"
+        }));
+    }
+
+    #[tokio::test]
+    async fn test_backpressure_timeout() {
+        let handler = HTTPHandler::new(1);
+        let request = build_request("");
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![]);
+
+        let response = handler
+            .handle(send_to, receive_from, request)
+            .await;
+
+        assert!(response.is_err_and(|e| e.to_string() == "ASGI await timeout elapsed"));
     }
 }

@@ -1,30 +1,58 @@
-use std::sync::Arc;
 use std::fmt::Display;
-use std::task::{Poll, Context};
+use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use asgispec::prelude::*;
-use derive_more::derive::Constructor;
-use http_body::Body;
 use http::Request;
+use http_body::Body;
 use http_body_util::{BodyExt, Full};
 use log::error;
-use tower::Service;
 use std::future::Future;
+use tower::Service;
+use fastwebsockets::upgrade::is_upgrade_request;
 
-use crate::errors::{Result as ArasResult, Error};
+use crate::communication::CommunicationFactory;
+use crate::errors::{Error, Result as ArasResult};
 use crate::protocols::{HTTPHandler, WebsocketHandler};
-use crate::types::{ServiceFuture, ConnectionInfo, Response};
+use crate::scope::ScopeFactory;
+use crate::types::{ConnectionInfo, Response, ServiceFuture};
 
-// A Tower service that handles an ASGI application
-#[derive(Constructor, Clone)]
+#[derive(Clone)]
 pub struct ArasASGIService<A: ASGIApplication> {
-    application: A,
-    state: A::State,
-    conn: ConnectionInfo,
+    scope_factory: ScopeFactory<A>,
+    communication_factory: CommunicationFactory<A>,
+    connection: ConnectionInfo,
     asgi_timeout_secs: u64,
 }
 
-impl<A, B> Service<Request<B>> for ArasASGIService<A> 
+impl<A: ASGIApplication> ArasASGIService<A> {
+    pub fn new(application: A, state: A::State, connection: ConnectionInfo, asgi_timeout_secs: u64) -> Self {
+        let scope_factory = ScopeFactory::new(state);
+        let communication_factory = CommunicationFactory::new(application);
+        Self {
+            scope_factory,
+            communication_factory,
+            connection,
+            asgi_timeout_secs,
+        }
+    }
+
+    pub(crate) fn new_from_factories(
+        scope_factory: ScopeFactory<A>,
+        communication_factory: CommunicationFactory<A>,
+        connection: ConnectionInfo,
+        asgi_timeout_secs: u64,
+    ) -> Self {
+        Self {
+            scope_factory,
+            communication_factory,
+            connection,
+            asgi_timeout_secs,
+        }
+    }
+}
+
+impl<A, B> Service<Request<B>> for ArasASGIService<A>
 where
     A: ASGIApplication + 'static,
     B: Body + Send + 'static,
@@ -40,23 +68,17 @@ where
     }
 
     fn call(&mut self, request: Request<B>) -> Self::Future {
-        if is_websocket_request(&request) {
-            let handler = WebsocketHandler::new();
-            let fut = handler.serve(
-                self.application.clone(), 
-                request,
-                self.conn.clone(),
-                self.state.clone(),
-            );
+        if is_upgrade_request(&request) {
+            let scope: Scope<<A as ASGIApplication>::State> = self.scope_factory.build_websocket(&self.connection, &request);
+            let (send_to_app, receive_from_app) = self.communication_factory.build(scope);
+            let handler = WebsocketHandler::new(self.asgi_timeout_secs);
+            let fut = handler.handle(send_to_app, receive_from_app, request);
             Box::pin(handle_error(fut))
         } else {
+            let scope = self.scope_factory.build_http(&self.connection, &request);
+            let (send_to_app, receive_from_app) = self.communication_factory.build(scope);
             let handler = HTTPHandler::new(self.asgi_timeout_secs);
-            let fut = handler.serve(
-                self.application.clone(), 
-                request,
-                self.conn.clone(),
-                self.state.clone(),
-            );
+            let fut = handler.handle(send_to_app, receive_from_app, request);
             Box::pin(handle_error(fut))
         }
     }
@@ -79,13 +101,4 @@ async fn handle_error(fut: impl Future<Output = ArasResult<Response>>) -> ArasRe
             Ok(response.map_err(|e| Arc::new(e))?)
         }
     }
-}
-
-fn is_websocket_request<B>(value: &Request<B>) -> bool {
-    if let Some(header_value) = value.headers().get("upgrade") {
-        if header_value == "websocket" {
-            return true;
-        }
-    };
-    false
 }

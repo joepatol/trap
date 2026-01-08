@@ -14,12 +14,12 @@ use tower_http::compression::CompressionLayer;
 use tower_http::trace::TraceLayer;
 use tower_http::ServiceBuilderExt;
 
-use crate::types::ResponseStatus;
-
+use super::communication::CommunicationFactory;
 use super::errors::Result;
 use super::protocols::LifespanHandler;
+use super::scope::ScopeFactory;
 use super::service::ArasASGIService;
-use super::types::{ConnectionInfo, Request};
+use super::types::{ConnectionInfo, Request, ResponseStatus};
 
 /// The Aras server implementation
 ///
@@ -69,8 +69,35 @@ pub struct ArasServer {
     backpressure_timeout: u64,
 }
 
+impl<A> ASGIServer<A> for ArasServer
+where
+    A: ASGIApplication + 'static,
+{
+    type Output = Result<()>;
+
+    async fn run(&self, application: A, state: A::State) -> Self::Output {
+        let scope_factory: ScopeFactory<A> = ScopeFactory::new(state);
+        let communication_factory = CommunicationFactory::new(application);
+
+        let scope = scope_factory.build_lifespan();
+        let (send_to_app, receive_from_app) = communication_factory.build(scope);
+        let mut lifespan_handler = LifespanHandler::new(self.backpressure_timeout)
+            .startup(send_to_app, receive_from_app)
+            .await?;
+
+        tokio::select! {
+            _ = self.cancel_token.cancelled() => lifespan_handler.shutdown().await,
+            out = self.run_server(scope_factory, communication_factory) => out,
+        }
+    }
+}
+
 impl ArasServer {
-    async fn run_server<A: ASGIApplication + 'static>(&self, application: A, state: A::State) -> Result<()> {
+    async fn run_server<A: ASGIApplication + 'static>(
+        &self,
+        scope_factory: ScopeFactory<A>,
+        communication_factory: CommunicationFactory<A>,
+    ) -> Result<()> {
         let keep_alive = self.keep_alive;
         let socket_addr = SocketAddr::new(self.addr, self.port);
         let listener = TcpListener::bind(socket_addr).await.expect("Failed to bind socket");
@@ -85,8 +112,6 @@ impl ArasServer {
                 }
             };
 
-            let application = application.clone();
-            let state = state.clone();
             let conn_info = ConnectionInfo::new(client, socket_addr);
             let io = TokioIo::new(tcp);
             info!("Connecting new client {client}");
@@ -108,9 +133,9 @@ impl ArasServer {
                 .rate_limit(self.rate_limit.0, self.rate_limit.1)
                 .concurrency_limit(self.concurrency_limit)
                 .timeout(self.request_timeout)
-                .service(ArasASGIService::new(
-                    application.clone(),
-                    state.clone(),
+                .service(ArasASGIService::new_from_factories(
+                    scope_factory.clone(),
+                    communication_factory.clone(),
                     conn_info,
                     self.backpressure_timeout,
                 ));
@@ -125,24 +150,6 @@ impl ArasServer {
 
             let handled = log_hyper_error(client, conn);
             tokio::task::spawn(handled);
-        }
-    }
-}
-
-impl<A> ASGIServer<A> for ArasServer
-where
-    A: ASGIApplication + 'static,
-{
-    type Output = Result<()>;
-
-    async fn run(&self, application: A, state: A::State) -> Self::Output {
-        let mut lifespan_handler = LifespanHandler::new(self.backpressure_timeout)
-            .startup(application.clone(), state.clone())
-            .await?;
-
-        tokio::select! {
-            _ = self.cancel_token.cancelled() => lifespan_handler.shutdown().await,
-            out = self.run_server(application, state) => out,
         }
     }
 }
