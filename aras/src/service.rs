@@ -4,13 +4,13 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use asgispec::prelude::*;
+use fastwebsockets::upgrade::is_upgrade_request;
 use http::Request;
 use http_body::Body;
 use http_body_util::{BodyExt, Full};
 use log::error;
 use std::future::Future;
 use tower::Service;
-use fastwebsockets::upgrade::is_upgrade_request;
 
 use crate::communication::CommunicationFactory;
 use crate::errors::{Error, Result as ArasResult};
@@ -69,7 +69,7 @@ where
     }
 
     fn call(&mut self, request: Request<B>) -> Self::Future {
-        let timeout = Duration  ::from_secs(self.asgi_timeout_secs);
+        let timeout = Duration::from_secs(self.asgi_timeout_secs);
         if is_upgrade_request(&request) {
             let scope: Scope<<A as ASGIApplication>::State> = self.scope_factory.build_websocket(&self.connection, &request);
             let (send_to_app, receive_from_app) = self.communication_factory.build(scope);

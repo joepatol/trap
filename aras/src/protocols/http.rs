@@ -73,20 +73,20 @@ impl HTTPHandler {
     }
 
     async fn make_response(&self, mut receive_from_app: impl ReceiveFromASGIApp + 'static) -> Result<Response> {
-        let timeout = self.timeout;
         let response_start_event = match tokio::time::timeout(self.timeout, receive_from_app.receive()).await? {
             Ok(ASGISendEvent::HTTPResponseStart(msg)) => msg,
             Ok(msg) => return Err(Error::unexpected_asgi_message(Arc::new(msg))),
             Err(e) => return Err(e),
         };
 
+        let timeout_for_stream = self.timeout;
         let body_stream = async_stream::stream! {
             let mut more_data = true;
             loop {
                 if !more_data {
                     break
                 }
-                match tokio::time::timeout(timeout, receive_from_app.receive()).await? {
+                match tokio::time::timeout(timeout_for_stream, receive_from_app.receive()).await? {
                     Ok(ASGISendEvent::HTTPResponseBody(msg)) => {
                         more_data = msg.more_body;
                         yield Ok(Frame::data(msg.body))
