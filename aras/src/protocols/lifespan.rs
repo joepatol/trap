@@ -6,7 +6,7 @@ use derive_more::Constructor;
 use log::{debug, error, info};
 
 use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
-use crate::errors::{Error, Result};
+use crate::{ArasError, ArasResult};
 
 #[derive(Constructor)]
 pub(crate) struct LifespanHandler {
@@ -18,7 +18,7 @@ impl LifespanHandler {
         self,
         mut send_to_app: S,
         mut receive_from_app: R,
-    ) -> Result<StartedLifespanHandler<S, R>> {
+    ) -> ArasResult<StartedLifespanHandler<S, R>> {
         info!("Application starting");
 
         match startup_loop(&mut send_to_app, &mut receive_from_app, self.timeout).await {
@@ -48,7 +48,7 @@ pub struct StartedLifespanHandler<S: SendToASGIApp, R: ReceiveFromASGIApp> {
 }
 
 impl<S: SendToASGIApp, R: ReceiveFromASGIApp> StartedLifespanHandler<S, R> {
-    pub async fn shutdown(&mut self) -> Result<()> {
+    pub async fn shutdown(&mut self) -> ArasResult<()> {
         info!("Application shutting down");
 
         if !self.enabled {
@@ -74,14 +74,14 @@ async fn startup_loop(
     send_to: &mut impl SendToASGIApp,
     receive_from: &mut impl ReceiveFromASGIApp,
     timeout: Duration,
-) -> Result<bool> {
+) -> ArasResult<bool> {
     if let Err(e) = send_to.send(ASGIReceiveEvent::new_lifespan_startup()).await {
         debug!("Lifespan protocol appears unsupported: {e}");
         return Ok(false);
     }
     match tokio::time::timeout(timeout, receive_from.receive()).await {
         Ok(Ok(ASGISendEvent::StartupComplete(_))) => Ok(true),
-        Ok(Ok(ASGISendEvent::StartupFailed(event))) => Err(Error::custom(event.message)),
+        Ok(Ok(ASGISendEvent::StartupFailed(event))) => Err(ArasError::custom(event.message)),
         Ok(Ok(_)) => {
             info!("Lifespan protocol appears unsupported (no lifespan event received)");
             Ok(false)
@@ -97,12 +97,12 @@ async fn shutdown_loop(
     send_to: &mut impl SendToASGIApp,
     receive_from: &mut impl ReceiveFromASGIApp,
     timeout: Duration,
-) -> Result<()> {
+) -> ArasResult<()> {
     send_to.send(ASGIReceiveEvent::new_lifespan_shutdown()).await?;
     match tokio::time::timeout(timeout, receive_from.receive()).await? {
         Ok(ASGISendEvent::ShutdownComplete(_)) => Ok(()),
-        Ok(ASGISendEvent::ShutdownFailed(event)) => Err(Error::custom(event.message)),
-        Ok(msg) => Err(Error::unexpected_asgi_message(Arc::new(msg))),
+        Ok(ASGISendEvent::ShutdownFailed(event)) => Err(ArasError::custom(event.message)),
+        Ok(msg) => Err(ArasError::unexpected_asgi_message(Arc::new(msg))),
         Err(e) => Err(e),
     }
 }

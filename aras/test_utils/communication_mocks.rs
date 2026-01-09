@@ -4,7 +4,7 @@ use bytes::Bytes;
 use tokio::sync::Mutex;
 
 use asgispec::prelude::*;
-use crate::errors::{Result, Error};
+use crate::{ArasResult, ArasError};
 use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
 
 pub(crate) struct SendToAppFail;
@@ -16,8 +16,8 @@ impl SendToAppFail {
 }
 
 impl SendToASGIApp for SendToAppFail {
-    async fn send(&mut self, _message: ASGIReceiveEvent) -> Result<()> {
-        Err(Error::custom("SendToAppFail always fails"))
+    async fn send(&mut self, _message: ASGIReceiveEvent) -> ArasResult<()> {
+        Err(ArasError::custom("SendToAppFail always fails"))
     }
 }
 
@@ -40,7 +40,7 @@ impl SendToAppCollector {
 }
 
 impl SendToASGIApp for SendToAppCollector {
-    async fn send(&mut self, message: ASGIReceiveEvent) -> Result<()> {
+    async fn send(&mut self, message: ASGIReceiveEvent) -> ArasResult<()> {
         let mut lock = self.messages.lock().await;
         lock.push(message);
         Ok(())
@@ -49,7 +49,7 @@ impl SendToASGIApp for SendToAppCollector {
 
 #[derive(Clone, Debug)]
 pub(crate) struct DeterministicReceiveFromApp {
-    messages: Vec<Result<ASGISendEvent>>,
+    messages: Vec<ArasResult<ASGISendEvent>>,
     index: Arc<Mutex<usize>>,
 }
 
@@ -62,7 +62,7 @@ impl Default for DeterministicReceiveFromApp {
 }
 
 impl DeterministicReceiveFromApp {
-    pub fn new(messages: Vec<Result<ASGISendEvent>>) -> Self {
+    pub fn new(messages: Vec<ArasResult<ASGISendEvent>>) -> Self {
         Self {
             messages,
             index: Arc::new(Mutex::new(0)),
@@ -71,13 +71,13 @@ impl DeterministicReceiveFromApp {
 }
 
 impl ReceiveFromASGIApp for DeterministicReceiveFromApp {
-    async fn receive(&mut self) -> Result<ASGISendEvent> {
+    async fn receive(&mut self) -> ArasResult<ASGISendEvent> {
         let mut index_lock = self.index.lock().await;
 
         if *index_lock >= self.messages.len() {
             // Simulate waiting for more messages that never arrive
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-            return Err(Error::custom("No more messages to receive"));
+            return Err(ArasError::custom("No more messages to receive"));
         }
 
         let message = self.messages[*index_lock].clone();

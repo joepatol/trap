@@ -1,5 +1,6 @@
 use std::{
     fmt::Debug,
+    result::Result,
     sync::{Arc, Mutex},
 };
 
@@ -114,10 +115,12 @@ impl PyASGISendEvent {
     }
 }
 
-impl<'source> FromPyObject<'source> for PyASGISendEvent {
-    fn extract_bound(ob: &Bound<'source, PyAny>) -> PyResult<Self> {
-        let py_mapping: Bound<PyMapping> = ob.downcast()?.to_owned();
-        let msg_type = py_mapping.get_item("type")?.downcast::<PyString>()?.to_string();
+impl<'a, 'py> FromPyObject<'a, 'py> for PyASGISendEvent {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let py_mapping: Bound<PyMapping> = obj.cast()?.to_owned();
+        let msg_type = py_mapping.get_item("type")?.cast::<PyString>()?.to_string();
 
         match msg_type.as_str() {
             "http.response.start" => Ok(Self::new(convert::parse_py_http_response_start(&py_mapping)?)),
@@ -153,7 +156,7 @@ impl<'py> IntoPyObject<'py> for PyASGIReceiveEvent {
 
     type Error = PyErr;
 
-    fn into_pyobject(self, py: Python<'py>) -> std::result::Result<Self::Output, Self::Error> {
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         match self.0 {
             ASGIReceiveEvent::HTTPRequest(event) => convert::http_request_event_into_py(py, event),
             ASGIReceiveEvent::HTTPDisconnect(event) => convert::http_disconnect_event_into_py(py, event),
@@ -181,7 +184,7 @@ impl<'py> IntoPyObject<'py> for PyScope {
 
     type Error = PyErr;
 
-    fn into_pyobject(self, py: Python<'py>) -> std::result::Result<Self::Output, Self::Error> {
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         match self.0 {
             Scope::HTTP(scope) => convert::http_scope_into_py(py, scope),
             Scope::Lifespan(scope) => convert::lifespan_scope_into_py(py, scope),
@@ -204,7 +207,7 @@ impl PySend {
 #[pymethods]
 impl PySend {
     async fn __call__(&self, message: Py<PyDict>) -> PyResult<()> {
-        let converted_message: PyASGISendEvent = Python::with_gil(|py: Python| message.extract(py))?;
+        let converted_message: PyASGISendEvent = Python::attach(|py: Python| message.extract(py))?;
         (self.send)(converted_message.0)
             .await
             .map_err(|e| PyIOError::new_err(format!("{e}")))?;
@@ -227,7 +230,7 @@ impl PyReceive {
 impl PyReceive {
     async fn __call__(&self) -> PyResult<Py<PyDict>> {
         let received = (self.receive)().await;
-        Python::with_gil(|py| PyASGIReceiveEvent::new(received).into_pyobject(py).map(|v| v.unbind()))
+        Python::attach(|py| PyASGIReceiveEvent::new(received).into_pyobject(py).map(|v| v.unbind()))
     }
 }
 
@@ -251,7 +254,7 @@ impl ASGIApplication for PyASGIAppWrapper {
     type Error = ArasError;
 
     async fn call(&self, scope: Scope<Self::State>, receive: ReceiveFn, send: SendFn) -> Result<(), Self::Error> {
-        let future = Python::with_gil(|py| {
+        let future = Python::attach(|py| {
             let maybe_awaitable = self.py_application.call1(
                 py,
                 (

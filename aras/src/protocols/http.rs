@@ -12,7 +12,7 @@ use hyper::body::{Body, Frame};
 use hyper::Request;
 
 use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
-use crate::errors::{Error, Result};
+use crate::{ArasError, ArasResult};
 use crate::types::Response;
 
 #[derive(Constructor)]
@@ -26,7 +26,7 @@ impl HTTPHandler {
         mut send_to_app: impl SendToASGIApp,
         receive_from_app: impl ReceiveFromASGIApp + 'static,
         request: Request<B>,
-    ) -> Result<Response>
+    ) -> ArasResult<Response>
     where
         B: Body + Send + 'static,
         B::Error: Display,
@@ -43,7 +43,7 @@ impl HTTPHandler {
         Ok(response?.1)
     }
 
-    async fn read_body<B>(&self, send_to_app: &mut impl SendToASGIApp, body: B) -> Result<()>
+    async fn read_body<B>(&self, send_to_app: &mut impl SendToASGIApp, body: B) -> ArasResult<()>
     where
         B: Body + Send + 'static,
         B::Error: Display,
@@ -52,7 +52,7 @@ impl HTTPHandler {
         let mut stream = body.into_data_stream().boxed();
 
         while let Some(part) = tokio::time::timeout(self.timeout, stream.next()).await? {
-            let mut data = part.map_err(|e| Error::custom(format!("Failed to read body: {e}")))?;
+            let mut data = part.map_err(|e| ArasError::custom(format!("Failed to read body: {e}")))?;
 
             let size = data.remaining();
             let bytes = data.copy_to_bytes(size);
@@ -72,10 +72,10 @@ impl HTTPHandler {
         Ok(())
     }
 
-    async fn make_response(&self, mut receive_from_app: impl ReceiveFromASGIApp + 'static) -> Result<Response> {
+    async fn make_response(&self, mut receive_from_app: impl ReceiveFromASGIApp + 'static) -> ArasResult<Response> {
         let response_start_event = match tokio::time::timeout(self.timeout, receive_from_app.receive()).await? {
             Ok(ASGISendEvent::HTTPResponseStart(msg)) => msg,
-            Ok(msg) => return Err(Error::unexpected_asgi_message(Arc::new(msg))),
+            Ok(msg) => return Err(ArasError::unexpected_asgi_message(Arc::new(msg))),
             Err(e) => return Err(e),
         };
 
@@ -91,7 +91,7 @@ impl HTTPHandler {
                         more_data = msg.more_body;
                         yield Ok(Frame::data(msg.body))
                     },
-                    Ok(msg) => yield Err(Error::unexpected_asgi_message(Arc::new(msg))),
+                    Ok(msg) => yield Err(ArasError::unexpected_asgi_message(Arc::new(msg))),
                     Err(e) => yield Err(e),
                 }
             }

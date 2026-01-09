@@ -9,14 +9,14 @@ use log::error;
 use tokio::sync::oneshot::{self, Receiver as OneshotReceiver};
 use tokio::sync::{Mutex, RwLock};
 
-use crate::errors::{Error, Result};
+use crate::{ArasResult, ArasError};
 
 pub(crate) trait SendToASGIApp: Send + Sync {
-    fn send(&mut self, message: ASGIReceiveEvent) -> impl Future<Output = Result<()>> + Send + Sync;
+    fn send(&mut self, message: ASGIReceiveEvent) -> impl Future<Output = ArasResult<()>> + Send + Sync;
 }
 
 pub(crate) trait ReceiveFromASGIApp: Send + Sync {
-    fn receive(&mut self) -> impl Future<Output = Result<ASGISendEvent>> + Send + Sync;
+    fn receive(&mut self) -> impl Future<Output = ArasResult<ASGISendEvent>> + Send + Sync;
 }
 
 /// Handle to track the state of the ASGI application.
@@ -25,24 +25,24 @@ pub(crate) trait ReceiveFromASGIApp: Send + Sync {
 /// The error value is cached after the first retrieval.
 #[derive(Clone, Debug)]
 struct ApplicationHandle {
-    error_value: Arc<RwLock<Option<Error>>>,
-    receiver: Arc<Mutex<Option<OneshotReceiver<Result<()>>>>>,
+    error_value: Arc<RwLock<Option<ArasError>>>,
+    receiver: Arc<Mutex<Option<OneshotReceiver<ArasResult<()>>>>>,
 }
 
 impl ApplicationHandle {
-    pub fn new(receiver: OneshotReceiver<Result<()>>) -> Self {
+    pub fn new(receiver: OneshotReceiver<ArasResult<()>>) -> Self {
         Self {
             receiver: Arc::new(Mutex::new(Some(receiver))),
             error_value: Arc::new(RwLock::new(None)),
         }
     }
 
-    async fn read_value(&self) -> Option<Error> {
+    async fn read_value(&self) -> Option<ArasError> {
         let read_value = self.error_value.read().await;
         read_value.clone()
     }
 
-    pub async fn wait_for_completion(&mut self) -> Error {
+    pub async fn wait_for_completion(&mut self) -> ArasError {
         // Return the error value if it is already set, we do this check first to avoid unnecessarily
         // acquiring exclusive locks
         if let Some(value) = self.read_value().await {
@@ -64,9 +64,9 @@ impl ApplicationHandle {
 
         // Wait for the receiver to complete, set the error value and return it
         let error_value = match maybe_recv.unwrap().await {
-            Ok(Ok(_)) => Error::application_not_running(),
+            Ok(Ok(_)) => ArasError::application_not_running(),
             Ok(Err(e)) => e,
-            Err(_) => Error::application_not_running(),
+            Err(_) => ArasError::application_not_running(),
         };
 
         let mut write_value = self.error_value.write().await;
@@ -83,7 +83,7 @@ pub(crate) struct ReceiveFromApp {
 }
 
 impl ReceiveFromASGIApp for ReceiveFromApp {
-    async fn receive(&mut self) -> Result<ASGISendEvent> {
+    async fn receive(&mut self) -> ArasResult<ASGISendEvent> {
         if let Ok(message) = self.receiver.recv().await {
             Ok(message)
         } else {
@@ -99,7 +99,7 @@ pub(crate) struct SendToApp {
 }
 
 impl SendToASGIApp for SendToApp {
-    async fn send(&mut self, message: ASGIReceiveEvent) -> Result<()> {
+    async fn send(&mut self, message: ASGIReceiveEvent) -> ArasResult<()> {
         if let Ok(_) = self.sender.send(message).await {
             Ok(())
         } else {
@@ -152,7 +152,7 @@ impl<A: ASGIApplication + 'static> CommunicationFactory<A> {
         tokio::task::spawn(async move {
             let out = if let Err(e) = app.call(scope, receive, send).await {
                 error!("Application error: {e}");
-                Err(Error::application_error(Arc::new(format!("{e:?}"))))
+                Err(ArasError::application_error(Arc::new(format!("{e:?}"))))
             } else {
                 Ok(())
             };

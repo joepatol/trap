@@ -93,7 +93,7 @@ fn serve_python<'a>(
     let state = PyState::new(PyDict::new(py).unbind());
     let cancel_token = token.get_cancel_token();
     let task_locals = pyo3_async_runtimes::TaskLocals::new(event_loop).copy_context(py)?;
-    let asgi_application = PyASGIAppWrapper::new(application, task_locals.clone_ref(py));
+    let asgi_application = PyASGIAppWrapper::new(application, task_locals.clone());
 
     let asgi_server = ArasServer::new(
         cancel_token,

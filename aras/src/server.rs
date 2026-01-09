@@ -15,7 +15,7 @@ use tower_http::trace::TraceLayer;
 use tower_http::ServiceBuilderExt;
 
 use super::communication::CommunicationFactory;
-use super::errors::Result;
+use super::ArasResult;
 use super::protocols::LifespanHandler;
 use super::scope::ScopeFactory;
 use super::service::ArasASGIService;
@@ -73,7 +73,7 @@ impl<A> ASGIServer<A> for ArasServer
 where
     A: ASGIApplication + 'static,
 {
-    type Output = Result<()>;
+    type Output = ArasResult<()>;
 
     async fn run(&self, application: A, state: A::State) -> Self::Output {
         let timeout = Duration::from_secs(self.backpressure_timeout);
@@ -98,7 +98,7 @@ impl ArasServer {
         &self,
         scope_factory: ScopeFactory<A>,
         communication_factory: CommunicationFactory<A>,
-    ) -> Result<()> {
+    ) -> ArasResult<()> {
         let keep_alive = self.keep_alive;
         let socket_addr = SocketAddr::new(self.addr, self.port);
         let listener = TcpListener::bind(socket_addr).await.expect("Failed to bind socket");

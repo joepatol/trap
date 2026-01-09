@@ -12,8 +12,8 @@ crate-type = ["cdylib"]
 aras = { path = "../aras" }
 asgispec = { path = "../asgispec" }
 
-pyo3 = { version = "^0.23.3", features = ["experimental-async"] }
-pyo3-async-runtimes = { version = "0.23", features = ["attributes", "tokio-runtime"] }
+pyo3 = { version = "^0.27.2", features = ["experimental-async"] }
+pyo3-async-runtimes = { version = "0.27.0", features = ["attributes", "tokio-runtime"] }
 
 log = "0.4.22"
 tracing-subscriber = "0.3.22"

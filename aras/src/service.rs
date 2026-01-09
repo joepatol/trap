@@ -13,7 +13,7 @@ use std::future::Future;
 use tower::Service;
 
 use crate::communication::CommunicationFactory;
-use crate::errors::{Error, Result as ArasResult};
+use crate::{ArasError, ArasResult};
 use crate::protocols::{HTTPHandler, WebsocketHandler};
 use crate::scope::ScopeFactory;
 use crate::types::{ConnectionInfo, Response, ServiceFuture};
@@ -60,7 +60,7 @@ where
     <B as Body>::Error: Display + Send,
     <B as Body>::Data: Send,
 {
-    type Error = Error;
+    type Error = ArasError;
     type Response = Response;
     type Future = ServiceFuture;
 

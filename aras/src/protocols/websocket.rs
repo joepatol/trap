@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::result::Result as StdResult;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -6,21 +7,19 @@ use asgispec::prelude::*;
 use bytes::Bytes;
 use bytes::BytesMut;
 use derive_more::derive::Constructor;
-use fastwebsockets::upgrade::UpgradeFut;
-use fastwebsockets::{upgrade, FragmentCollector, Frame, OpCode, Payload};
+use fastwebsockets::{upgrade, FragmentCollector, Frame, OpCode, Payload, WebSocketError};
 use http::StatusCode;
-use http_body_util::{BodyExt, Full};
+use http_body_util::{BodyExt, Empty, Full};
 use hyper::body::Body;
-use hyper::upgrade::Upgraded;
 use hyper::Request;
-use hyper_util::rt::TokioIo;
 use log::error;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Mutex;
+use tokio::time::error::Elapsed;
 
 use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
-use crate::errors::Error;
-use crate::errors::Result;
 use crate::types::Response;
+use crate::{ArasError, ArasResult};
 
 #[derive(Constructor)]
 pub(crate) struct WebsocketHandler {
@@ -33,7 +32,7 @@ impl WebsocketHandler {
         mut send_to_app: impl SendToASGIApp + 'static,
         mut receive_from_app: impl ReceiveFromASGIApp + 'static,
         mut request: Request<B>,
-    ) -> Result<Response>
+    ) -> ArasResult<Response>
     where
         B: Body + Send + 'static,
         B::Error: Display,
@@ -49,8 +48,16 @@ impl WebsocketHandler {
         let (upgrade_response, fut) = upgrade::upgrade(&mut request)?;
 
         tokio::task::spawn(async move {
+            let ws = match fut.await {
+                Ok(ws) => Arc::new(Mutex::new(FragmentCollector::new(ws))),
+                Err(e) => {
+                    error!("Websocket upgrade failed: {}", e);
+                    return;
+                }
+            };
+
             if let Err(e) = self
-                .run_accepted_websocket(&mut send_to_app, &mut receive_from_app, fut)
+                .run_accepted_websocket(&mut send_to_app, &mut receive_from_app, ws)
                 .await
             {
                 error!("Error while serving websocket; {e}");
@@ -64,7 +71,7 @@ impl WebsocketHandler {
         &self,
         send_to: &mut impl SendToASGIApp,
         receive_from: &mut impl ReceiveFromASGIApp,
-    ) -> Result<(bool, Response)> {
+    ) -> ArasResult<(bool, Response)> {
         let mut builder = hyper::Response::builder();
         send_to.send(ASGIReceiveEvent::new_websocket_connect()).await?;
 
@@ -88,7 +95,7 @@ impl WebsocketHandler {
                 Ok((false, builder.body(body)?))
             }
             Ok(Err(e)) => Err(e),
-            Ok(Ok(msg)) => Err(Error::unexpected_asgi_message(Arc::new(msg))),
+            Ok(Ok(msg)) => Err(ArasError::unexpected_asgi_message(Arc::new(msg))),
             Err(e) => Err(e.into()),
         }
     }
@@ -97,10 +104,8 @@ impl WebsocketHandler {
         &self,
         send_to: &mut impl SendToASGIApp,
         receive_from: &mut impl ReceiveFromASGIApp,
-        upgraded_io: UpgradeFut,
-    ) -> Result<()> {
-        let ws = Arc::new(Mutex::new(FragmentCollector::new(upgraded_io.await?)));
-
+        ws: Arc<Mutex<FragmentCollector<impl AsyncRead + AsyncWrite + Unpin>>>,
+    ) -> ArasResult<()> {
         loop {
             let ws_iter = ws.clone();
             let mut ws_locked = ws_iter.lock().await;
@@ -133,10 +138,7 @@ impl WebsocketHandler {
     }
 }
 
-fn merge_responses(
-    app_response: Response,
-    upgrade_response: http::Response<http_body_util::Empty<Bytes>>,
-) -> Result<Response> {
+fn merge_responses(app_response: Response, upgrade_response: http::Response<Empty<Bytes>>) -> ArasResult<Response> {
     let mut merged_response = http::Response::builder().status(upgrade_response.status());
     for (k, v) in upgrade_response.headers() {
         merged_response = merged_response.header(k, v);
@@ -149,14 +151,14 @@ fn merge_responses(
 }
 
 enum WsIteration<'a> {
-    ReceiveClient(std::result::Result<fastwebsockets::Frame<'a>, fastwebsockets::WebSocketError>),
-    ReceiveApplication(std::result::Result<Result<ASGISendEvent>, tokio::time::error::Elapsed>),
+    ReceiveClient(StdResult<fastwebsockets::Frame<'a>, WebSocketError>),
+    ReceiveApplication(StdResult<ArasResult<ASGISendEvent>, Elapsed>),
 }
 
 async fn do_app_iteration(
-    msg: std::result::Result<Result<ASGISendEvent>, tokio::time::error::Elapsed>,
-    ws: Arc<Mutex<FragmentCollector<TokioIo<Upgraded>>>>,
-) -> Result<bool> {
+    msg: StdResult<ArasResult<ASGISendEvent>, Elapsed>,
+    ws: Arc<Mutex<FragmentCollector<impl AsyncRead + AsyncWrite + Unpin>>>,
+) -> ArasResult<bool> {
     match msg {
         Ok(Ok(ASGISendEvent::WebsocketSend(msg))) => {
             if let Some(data) = msg.text {
@@ -187,7 +189,7 @@ async fn do_app_iteration(
             let payload = Payload::Owned(String::from("Internal server error").into_bytes());
             let frame = Frame::new(true, OpCode::Close, None, payload);
             ws.lock().await.write_frame(frame).await?;
-            Err(Error::unexpected_asgi_message(Arc::new(format!(
+            Err(ArasError::unexpected_asgi_message(Arc::new(format!(
                 "Received invalid ASGI message in websocket loop. Got: {msg:?}"
             ))))
         }
@@ -200,7 +202,7 @@ async fn do_app_iteration(
     }
 }
 
-async fn do_server_iteration(frame: Frame<'_>, send_to: &mut impl SendToASGIApp) -> Result<bool> {
+async fn do_server_iteration(frame: Frame<'_>, send_to: &mut impl SendToASGIApp) -> ArasResult<bool> {
     let bytes = match frame.payload {
         Payload::Bytes(b) => Bytes::from(b),
         Payload::Owned(b) => Bytes::from(b),
@@ -230,11 +232,21 @@ async fn do_server_iteration(frame: Frame<'_>, send_to: &mut impl SendToASGIApp)
 
 #[cfg(test)]
 mod tests {
-    use http::Request;
+    use super::{do_app_iteration, WebsocketHandler};
+
+    use bytes::Bytes;
+    use std::result::Result;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use tokio::time::error::Elapsed;
+
     use asgispec::prelude::*;
-    use super::WebsocketHandler;
+    use fastwebsockets::{FragmentCollector, Role, WebSocket};
+    use http::Request;
 
     use crate::communication_mocks::{DeterministicReceiveFromApp, SendToAppCollector};
+    use crate::stream_mock::MockWebsocketStream;
+    use crate::ArasResult;
 
     fn build_websocket_request() -> Request<String> {
         Request::builder()
@@ -245,23 +257,88 @@ mod tests {
             .expect("Failed to build request")
     }
 
+    fn build_websocket_client() -> (MockWebsocketStream, Arc<Mutex<FragmentCollector<MockWebsocketStream>>>) {
+        let stream = MockWebsocketStream::new();
+        let ws = WebSocket::after_handshake(stream.clone(), Role::Client);
+        let arc_ws = Arc::new(Mutex::new(FragmentCollector::new(ws)));
+        (stream, arc_ws)
+    }
+
+    #[tokio::test]
+    async fn test_send_message_to_websocket_client() {
+        let (stream, ws) = build_websocket_client();
+        let msg: Result<ArasResult<ASGISendEvent>, Elapsed> = Ok(Ok(ASGISendEvent::new_websocket_send(
+            Some(Bytes::from("hello client")),
+            None,
+        )));
+
+        let result = do_app_iteration(msg, ws.clone()).await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        let written = stream.written_unmasked().unwrap();
+
+        assert!(written.len() == 1);
+        assert!(written[0] == "hello client");
+    }
+
     #[tokio::test]
     async fn test_accept_websocket_connection() {
         let handler = WebsocketHandler::new(std::time::Duration::from_secs(5));
         let request = build_websocket_request();
 
         let send_to = SendToAppCollector::new();
-        let receive_from = DeterministicReceiveFromApp::new(vec![
-           Ok(ASGISendEvent::new_websocket_accept(None, vec![])),
-        ]);
+        let receive_from =
+            DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(None, vec![]))]);
 
-        let response = handler
-            .handle(send_to, receive_from, request)
-            .await;
-
-        println!("Response: {:?}", response);
+        let response = handler.handle(send_to, receive_from, request).await;
 
         assert!(response.is_ok());
-        assert!(response.unwrap().status() == http::StatusCode::SWITCHING_PROTOCOLS);
+
+        let response = response.unwrap();
+
+        assert!(response.status() == http::StatusCode::SWITCHING_PROTOCOLS);
+        assert!(response.headers().get("sec-websocket-accept").is_some());
+        assert!(response.headers().get("connection").unwrap() == "upgrade");
+        assert!(response.headers().get("upgrade").unwrap() == "websocket");
+    }
+
+    #[tokio::test]
+    async fn test_accept_websocket_connection_additional_headers() {
+        let handler = WebsocketHandler::new(std::time::Duration::from_secs(5));
+        let request = build_websocket_request();
+
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(
+            None,
+            vec![(b"X-Custom-Header".to_vec(), b"CustomValue".to_vec())],
+        ))]);
+
+        let response = handler.handle(send_to, receive_from, request).await;
+
+        assert!(response.is_ok());
+
+        let response = response.unwrap();
+
+        assert!(response.headers().get("X-Custom-Header").unwrap() == "CustomValue");
+        assert!(response.headers().len() == 4);
+    }
+
+    #[tokio::test]
+    async fn test_duplicate_headers() {
+        let handler = WebsocketHandler::new(std::time::Duration::from_secs(5));
+        let request = build_websocket_request();
+
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(
+            None,
+            vec![(b"sec-websocket-accept".to_vec(), b"CustomValue".to_vec())],
+        ))]);
+
+        let response = handler.handle(send_to, receive_from, request).await;
+
+        assert!(response.is_ok());
+        assert!(response.unwrap().headers().len() == 4);
     }
 }
