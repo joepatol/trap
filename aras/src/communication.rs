@@ -7,7 +7,7 @@ use async_channel::{self as channel, Receiver, Sender};
 use derive_more::derive::Constructor;
 use log::error;
 use tokio::sync::oneshot::{self, Receiver as OneshotReceiver};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::errors::{Error, Result};
 
@@ -19,79 +19,91 @@ pub(crate) trait ReceiveFromASGIApp: Send + Sync {
     fn receive(&mut self) -> impl Future<Output = Result<ASGISendEvent>> + Send + Sync;
 }
 
-/// Keeps track of the internal state op the ASGI application. Either the application is still running or
-/// it has returned. If it has returned, from the servers perspective this is always an error when
-/// trying to communicate with the application.
-/// So we keep an optional error value that is set when the application has returned.
-/// Communication with the application is done via a oneshot receiver which should return
-/// the result of the application task.
+/// Handle to track the state of the ASGI application.
+/// Can wait for the application to complete and retrieve the result of the application execution.
+/// This type is idempotent and can be cloned to share the same state across multiple senders and receivers.
+/// The error value is cached after the first retrieval.
 #[derive(Clone, Debug)]
-struct ApplicationState {
-    error_value: Option<Error>,
+struct ApplicationHandle {
+    error_value: Arc<RwLock<Option<Error>>>,
     receiver: Arc<Mutex<Option<OneshotReceiver<Result<()>>>>>,
 }
 
-impl ApplicationState {
+impl ApplicationHandle {
     pub fn new(receiver: OneshotReceiver<Result<()>>) -> Self {
         Self {
             receiver: Arc::new(Mutex::new(Some(receiver))),
-            error_value: None,
+            error_value: Arc::new(RwLock::new(None)),
         }
     }
 
+    async fn read_value(&self) -> Option<Error> {
+        let read_value = self.error_value.read().await;
+        read_value.clone()
+    }
+
     pub async fn wait_for_completion(&mut self) -> Error {
-        if self.error_value.is_some() {
-            return self.error_value.clone().unwrap();
+        // Return the error value if it is already set, we do this check first to avoid unnecessarily
+        // acquiring exclusive locks
+        if let Some(value) = self.read_value().await {
+            return value;
         };
 
+        // If there is no value yet, we lock the Mutex to check if the receiver is still available
         let maybe_recv = self.receiver.lock().await.take();
-        
+
+        // If it's not available, it could be due to another caller having already awaited it and set `self.error_value`.
+        // If both are `None`, then the implementation is incorrect.
         if maybe_recv.is_none() {
-            panic!("ApplicationState implementation incorrect: receiver already taken but error_value is None");
+            if let Some(value) = self.read_value().await {
+                return value;
+            } else {
+                panic!("ApplicationState implementation incorrect: receiver already taken and error_value is None");
+            }
         }
 
-        self.error_value = match maybe_recv.unwrap().await {
-            Ok(Ok(_)) => Some(Error::application_not_running()),
-            Ok(Err(e)) => Some(e),
-            Err(_) => Some(Error::application_not_running()),
+        // Wait for the receiver to complete, set the error value and return it
+        let error_value = match maybe_recv.unwrap().await {
+            Ok(Ok(_)) => Error::application_not_running(),
+            Ok(Err(e)) => e,
+            Err(_) => Error::application_not_running(),
         };
 
-        self.error_value.clone().unwrap()
+        let mut write_value = self.error_value.write().await;
+        *write_value = Some(error_value.clone());
+
+        error_value
     }
 }
 
 #[derive(Constructor, Debug)]
 pub(crate) struct ReceiveFromApp {
-    state: ApplicationState,
+    handle: ApplicationHandle,
     receiver: Receiver<ASGISendEvent>,
 }
 
 impl ReceiveFromASGIApp for ReceiveFromApp {
     async fn receive(&mut self) -> Result<ASGISendEvent> {
-        let message = self.receiver.recv().await;
-    
-        if message.is_err() {
-            Err(self.state.wait_for_completion().await)
+        if let Ok(message) = self.receiver.recv().await {
+            Ok(message)
         } else {
-            Ok(message.unwrap())
+            Err(self.handle.wait_for_completion().await)
         }
     }
 }
 
 #[derive(Constructor, Debug)]
 pub(crate) struct SendToApp {
-    state: ApplicationState,
+    handle: ApplicationHandle,
     sender: Sender<ASGIReceiveEvent>,
 }
 
 impl SendToASGIApp for SendToApp {
     async fn send(&mut self, message: ASGIReceiveEvent) -> Result<()> {
-        let could_send = self.sender.send(message).await;
-
-        if could_send.is_err() {
-            Err(self.state.wait_for_completion().await)
-        } else {
+        if let Ok(_) = self.sender.send(message).await {
             Ok(())
+        } else {
+            Err(self.handle.wait_for_completion().await)
         }
     }
 }
@@ -148,7 +160,7 @@ impl<A: ASGIApplication + 'static> CommunicationFactory<A> {
             let _ = result_producer.send(out);
         });
 
-        let state = ApplicationState::new(result_consumer);
+        let state = ApplicationHandle::new(result_consumer);
 
         (
             SendToApp::new(state.clone(), send_to_app),
@@ -159,10 +171,10 @@ impl<A: ASGIApplication + 'static> CommunicationFactory<A> {
 
 #[cfg(test)]
 mod tests {
-    use asgispec::prelude::*;
     use super::CommunicationFactory;
-    use crate::communication::{SendToASGIApp, ReceiveFromASGIApp};
+    use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
     use crate::scope::ScopeFactory;
+    use asgispec::prelude::*;
 
     use crate::application_mocks::*;
 
@@ -172,7 +184,7 @@ mod tests {
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<LifespanProtocolApp>  = ScopeFactory::new(state);
+        let scope_factory: ScopeFactory<LifespanProtocolApp> = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
@@ -190,7 +202,7 @@ mod tests {
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<LifespanProtocolApp>  = ScopeFactory::new(state);
+        let scope_factory: ScopeFactory<LifespanProtocolApp> = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
@@ -202,14 +214,13 @@ mod tests {
         assert!(received_event == ASGISendEvent::new_shutdown_complete());
     }
 
-
     #[tokio::test]
     async fn test_app_returns_without_sending_message_send_to() {
         let app = ImmediateReturnApp::new();
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<ImmediateReturnApp>  = ScopeFactory::new(state);
+        let scope_factory: ScopeFactory<ImmediateReturnApp> = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (mut send_to_app, _) = comm_factory.build(scope);
@@ -226,7 +237,7 @@ mod tests {
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<ImmediateReturnApp>  = ScopeFactory::new(state);
+        let scope_factory: ScopeFactory<ImmediateReturnApp> = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (_, mut receive_from_app) = comm_factory.build(scope);
@@ -238,11 +249,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_app_raises_an_error_send_to() {
-        let app = ErrorApp::new();
+        let app = ImmediateErrorApp::new();
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<ErrorApp>  = ScopeFactory::new(state);
+        let scope_factory: ScopeFactory<ImmediateErrorApp> = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (mut send_to_app, _) = comm_factory.build(scope);
@@ -255,11 +266,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_app_raises_an_error_receive_from() {
-        let app = ErrorApp::new();
+        let app = ImmediateErrorApp::new();
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<ErrorApp>  = ScopeFactory::new(state);
+        let scope_factory: ScopeFactory<ImmediateErrorApp> = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (_, mut receive_from_app) = comm_factory.build(scope);
@@ -267,5 +278,111 @@ mod tests {
         let result = receive_from_app.receive().await;
 
         assert!(result.is_err_and(|e| { e.to_string() == "Application error: TestError(\"Immediate error\")" }));
+    }
+
+    #[tokio::test]
+    async fn test_app_raises_an_error_receive_then_send() {
+        let app = ImmediateErrorApp::new();
+        let state = MockState::new();
+
+        let comm_factory = CommunicationFactory::new(app);
+        let scope_factory: ScopeFactory<ImmediateErrorApp> = ScopeFactory::new(state);
+        let scope = scope_factory.build_lifespan();
+
+        let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
+
+        let recv_result = receive_from_app.receive().await;
+        let send_result = send_to_app.send(ASGIReceiveEvent::new_lifespan_shutdown()).await;
+
+        assert!(recv_result.is_err());
+        assert!(send_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_app_raises_an_error_send_then_receive() {
+        let app = ImmediateErrorApp::new();
+        let state = MockState::new();
+
+        let comm_factory = CommunicationFactory::new(app);
+        let scope_factory: ScopeFactory<ImmediateErrorApp> = ScopeFactory::new(state);
+        let scope = scope_factory.build_lifespan();
+
+        let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
+
+        let send_result = send_to_app.send(ASGIReceiveEvent::new_lifespan_shutdown()).await;
+        let recv_result = receive_from_app.receive().await;
+
+        assert!(recv_result.is_err());
+        assert!(send_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_app_raises_an_error_send_then_receive_with_yield() {
+        let app = ImmediateErrorApp::new();
+        let state = MockState::new();
+
+        let comm_factory = CommunicationFactory::new(app);
+        let scope_factory: ScopeFactory<ImmediateErrorApp> = ScopeFactory::new(state);
+        let scope = scope_factory.build_lifespan();
+
+        let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
+
+        // Calling send is racy, as the app task may not have completed yet meaning the receiver could still be open
+        // To make sure the app is able to send it's result before send is called we yield to the scheduler
+        tokio::task::yield_now().await;
+
+        let send_result = send_to_app.send(ASGIReceiveEvent::new_lifespan_shutdown()).await;
+        let recv_result = receive_from_app.receive().await;
+
+        assert!(recv_result.is_err());
+        assert!(send_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_error_value_is_correct() {
+        let app = ImmediateReturnApp::new();
+        let state = MockState::new();
+
+        let comm_factory = CommunicationFactory::new(app);
+        let scope_factory: ScopeFactory<ImmediateReturnApp> = ScopeFactory::new(state);
+        let scope = scope_factory.build_lifespan();
+
+        let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
+
+        // We should keep on getting the same error value after the app has returned
+        // Calling send immediately is racy, as the app task may not have completed yet meaning the receiver could still be open
+        let result = receive_from_app.receive().await;
+        assert!(result.is_err_and(|e| { e.to_string() == "Application is not running" }));
+        let result = receive_from_app.receive().await;
+        assert!(result.is_err_and(|e| { e.to_string() == "Application is not running" }));
+        let result = send_to_app.send(ASGIReceiveEvent::new_lifespan_startup()).await;
+        assert!(result.is_err_and(|e| { e.to_string() == "Application is not running" }));
+        let result = receive_from_app.receive().await;
+        assert!(result.is_err_and(|e| { e.to_string() == "Application is not running" }));
+        let result = send_to_app.send(ASGIReceiveEvent::new_http_disconnect()).await;
+        assert!(result.is_err_and(|e| { e.to_string() == "Application is not running" }));
+    }
+
+    #[tokio::test]
+    async fn test_error_in_application() {
+        let app = ErrorApp::new();
+        let state = MockState::new();
+
+        let comm_factory = CommunicationFactory::new(app);
+        let scope_factory: ScopeFactory<ImmediateReturnApp> = ScopeFactory::new(state);
+        let scope = scope_factory.build_lifespan();
+
+        let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
+
+        let send1 = send_to_app.send(ASGIReceiveEvent::new_lifespan_startup()).await;
+        let recv1 = receive_from_app.receive().await;
+
+        let send2 = send_to_app.send(ASGIReceiveEvent::new_lifespan_shutdown()).await;
+        let recv2 = receive_from_app.receive().await;
+
+        assert!(send1.is_ok());
+        assert!(recv1.is_ok_and(|msg| { msg == ASGISendEvent::new_startup_complete() }));
+        assert!(send2.is_err_and(|e| { e.to_string() == "Application error: TestError(\"Oops\")" }));
+        assert!(recv2.is_err_and(|e| { e.to_string() == "Application error: TestError(\"Oops\")" }));
     }
 }
