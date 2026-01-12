@@ -244,8 +244,8 @@ mod tests {
     use fastwebsockets::{FragmentCollector, Role, WebSocket};
     use http::Request;
 
-    use crate::communication_mocks::{DeterministicReceiveFromApp, SendToAppCollector};
-    use crate::stream_mock::MockWebsocketStream;
+    use crate::mocks::communication::{DeterministicReceiveFromApp, SendToAppCollector};
+    use crate::mocks::stream::MockWebsocketStream;
     use crate::ArasResult;
 
     fn build_websocket_request() -> Request<String> {
@@ -257,16 +257,44 @@ mod tests {
             .expect("Failed to build request")
     }
 
-    fn build_websocket_client() -> (MockWebsocketStream, Arc<Mutex<FragmentCollector<MockWebsocketStream>>>) {
-        let stream = MockWebsocketStream::new();
+    fn build_websocket_client(messages: Option<Vec<&str>>) -> (MockWebsocketStream, Arc<Mutex<FragmentCollector<MockWebsocketStream>>>) {
+        let stream;
+        if messages.is_some() {
+            stream = MockWebsocketStream::new(messages.unwrap());
+        } else {
+            stream = MockWebsocketStream::empty();
+        }
         let ws = WebSocket::after_handshake(stream.clone(), Role::Client);
         let arc_ws = Arc::new(Mutex::new(FragmentCollector::new(ws)));
         (stream, arc_ws)
     }
 
     #[tokio::test]
+    async fn test_handle_websocket_connection() {
+        let handler = WebsocketHandler::new(std::time::Duration::from_secs(5));
+        let (stream, ws) = build_websocket_client(Some(vec![
+            "hello server",
+            "im the client",
+        ]));
+
+        let mut send_to = SendToAppCollector::new();
+        let mut receive_from =
+            DeterministicReceiveFromApp::new(vec![
+                Ok(ASGISendEvent::new_websocket_send(None, Some("hello client".into()))),
+                Ok(ASGISendEvent::new_websocket_send(None, Some("im the server".into()))),
+            ]);
+
+        let result = handler.run_accepted_websocket(&mut send_to, &mut receive_from, ws).await;
+        
+        println!("Result: {:?}", result);
+        println!("Send to app: {:?}", send_to.get_messages().await);
+        println!("Written to stream by server: {:?}", stream.written_unmasked().unwrap());
+        println!("Stream received: {:?}", stream.received_unmasked().unwrap());
+    }
+
+    #[tokio::test]
     async fn test_send_message_to_websocket_client() {
-        let (stream, ws) = build_websocket_client();
+        let (stream, ws) = build_websocket_client(None);
         let msg: Result<ArasResult<ASGISendEvent>, Elapsed> = Ok(Ok(ASGISendEvent::new_websocket_send(
             Some(Bytes::from("hello client")),
             None,

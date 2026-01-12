@@ -176,7 +176,7 @@ mod tests {
     use crate::scope::ScopeFactory;
     use asgispec::prelude::*;
 
-    use crate::application_mocks::*;
+    use crate::mocks::application::*;
 
     #[tokio::test]
     async fn test_send_lifespan_startup_event() {
@@ -184,7 +184,7 @@ mod tests {
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<LifespanProtocolApp> = ScopeFactory::new(state);
+        let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
@@ -202,7 +202,7 @@ mod tests {
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<LifespanProtocolApp> = ScopeFactory::new(state);
+        let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
@@ -220,7 +220,7 @@ mod tests {
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<ImmediateReturnApp> = ScopeFactory::new(state);
+        let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (mut send_to_app, _) = comm_factory.build(scope);
@@ -237,7 +237,7 @@ mod tests {
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<ImmediateReturnApp> = ScopeFactory::new(state);
+        let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (_, mut receive_from_app) = comm_factory.build(scope);
@@ -253,7 +253,7 @@ mod tests {
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<ImmediateErrorApp> = ScopeFactory::new(state);
+        let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (mut send_to_app, _) = comm_factory.build(scope);
@@ -270,7 +270,7 @@ mod tests {
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<ImmediateErrorApp> = ScopeFactory::new(state);
+        let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (_, mut receive_from_app) = comm_factory.build(scope);
@@ -286,7 +286,7 @@ mod tests {
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<ImmediateErrorApp> = ScopeFactory::new(state);
+        let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
@@ -304,7 +304,7 @@ mod tests {
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<ImmediateErrorApp> = ScopeFactory::new(state);
+        let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
@@ -322,7 +322,7 @@ mod tests {
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<ImmediateErrorApp> = ScopeFactory::new(state);
+        let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
@@ -344,7 +344,7 @@ mod tests {
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<ImmediateReturnApp> = ScopeFactory::new(state);
+        let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
@@ -369,7 +369,7 @@ mod tests {
         let state = MockState::new();
 
         let comm_factory = CommunicationFactory::new(app);
-        let scope_factory: ScopeFactory<ImmediateReturnApp> = ScopeFactory::new(state);
+        let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
         let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);

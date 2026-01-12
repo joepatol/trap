@@ -114,7 +114,7 @@ mod tests {
     use asgispec::prelude::*;
     use crate::ArasError;
     use super::{LifespanHandler, StartedLifespanHandler};
-    use crate::communication_mocks::{DeterministicReceiveFromApp, SendToAppCollector, SendToAppFail};
+    use crate::mocks::communication::{DeterministicReceiveFromApp, SendToAppCollector, SendToAppFail};
 
     #[tokio::test]
     async fn test_lifespan_startup() {

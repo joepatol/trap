@@ -117,7 +117,7 @@ mod tests {
     use std::time::Duration;
 
     use super::HTTPHandler;
-    use crate::communication_mocks::{DeterministicReceiveFromApp, SendToAppCollector, SendToAppFail};
+    use crate::mocks::communication::{DeterministicReceiveFromApp, SendToAppCollector, SendToAppFail};
     use crate::types::Response;
     use crate::ArasError;
 

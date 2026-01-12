@@ -20,7 +20,7 @@ use crate::types::{ConnectionInfo, Response, ServiceFuture};
 
 #[derive(Clone)]
 pub struct ArasASGIService<A: ASGIApplication> {
-    scope_factory: ScopeFactory<A>,
+    scope_factory: ScopeFactory<A::State>,
     communication_factory: CommunicationFactory<A>,
     connection: ConnectionInfo,
     asgi_timeout_secs: u64,
@@ -39,7 +39,7 @@ impl<A: ASGIApplication> ArasASGIService<A> {
     }
 
     pub(crate) fn new_from_factories(
-        scope_factory: ScopeFactory<A>,
+        scope_factory: ScopeFactory<A::State>,
         communication_factory: CommunicationFactory<A>,
         connection: ConnectionInfo,
         asgi_timeout_secs: u64,
@@ -71,7 +71,7 @@ where
     fn call(&mut self, request: Request<B>) -> Self::Future {
         let timeout = Duration::from_secs(self.asgi_timeout_secs);
         if is_upgrade_request(&request) {
-            let scope: Scope<<A as ASGIApplication>::State> = self.scope_factory.build_websocket(&self.connection, &request);
+            let scope = self.scope_factory.build_websocket(&self.connection, &request);
             let (send_to_app, receive_from_app) = self.communication_factory.build(scope);
             let handler = WebsocketHandler::new(timeout);
             let fut = handler.handle(send_to_app, receive_from_app, request);

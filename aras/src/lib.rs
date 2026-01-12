@@ -11,13 +11,5 @@ pub use server::ArasServer;
 pub use service::ArasASGIService;
 
 #[cfg(test)]
-#[path = "../test_utils/application_mocks.rs"]
-mod application_mocks;
-
-#[cfg(test)]
-#[path = "../test_utils/communication_mocks.rs"]
-mod communication_mocks;
-
-#[cfg(test)]
-#[path = "../test_utils/stream_mock.rs"]
-mod stream_mock;
+#[path = "../mocks/mod.rs"]
+mod mocks;

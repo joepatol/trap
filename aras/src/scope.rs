@@ -5,18 +5,18 @@ use crate::types::ConnectionInfo;
 
 /// Given a state build ASGI scopes for the supported protocols.
 #[derive(Clone)]
-pub(crate) struct ScopeFactory<A: ASGIApplication> {
-    state: A::State,
+pub(crate) struct ScopeFactory<S: State> {
+    state: S,
 }
 
-impl<A: ASGIApplication> ScopeFactory<A> {
-    pub fn new(state: A::State) -> Self {
+impl<S: State> ScopeFactory<S> {
+    pub fn new(state: S) -> Self {
         Self { state }
     }
 }
 
-impl<A: ASGIApplication> ScopeFactory<A> {
-    pub fn build_http<B>(&self, conn: &ConnectionInfo, request: &Request<B>) -> Scope<A::State> {
+impl<S: State> ScopeFactory<S> {
+    pub fn build_http<B>(&self, conn: &ConnectionInfo, request: &Request<B>) -> Scope<S> {
         let scope = HTTPScope::new(
             ASGIScope::default(),
             format!("{:?}", request.version()),
@@ -38,7 +38,7 @@ impl<A: ASGIApplication> ScopeFactory<A> {
         scope.into()
     }
 
-    pub fn build_websocket<B>(&self, conn: &ConnectionInfo, request: &Request<B>) -> Scope<A::State> {
+    pub fn build_websocket<B>(&self, conn: &ConnectionInfo, request: &Request<B>) -> Scope<S> {
         let subprotocols = request
             .headers()
             .into_iter()
@@ -73,7 +73,7 @@ impl<A: ASGIApplication> ScopeFactory<A> {
         scope.into()
     }
 
-    pub fn build_lifespan(&self) -> Scope<A::State> {
+    pub fn build_lifespan(&self) -> Scope<S> {
         Scope::Lifespan(LifespanScope::new(ASGIScope::default(), Some(self.state.clone())))
     }
 }

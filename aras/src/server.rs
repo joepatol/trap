@@ -77,7 +77,7 @@ where
 
     async fn run(&self, application: A, state: A::State) -> Self::Output {
         let timeout = Duration::from_secs(self.backpressure_timeout);
-        let scope_factory: ScopeFactory<A> = ScopeFactory::new(state);
+        let scope_factory = ScopeFactory::new(state);
         let communication_factory = CommunicationFactory::new(application);
 
         let scope = scope_factory.build_lifespan();
@@ -96,7 +96,7 @@ where
 impl ArasServer {
     async fn run_server<A: ASGIApplication + 'static>(
         &self,
-        scope_factory: ScopeFactory<A>,
+        scope_factory: ScopeFactory<A::State>,
         communication_factory: CommunicationFactory<A>,
     ) -> ArasResult<()> {
         let keep_alive = self.keep_alive;
