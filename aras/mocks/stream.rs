@@ -7,9 +7,8 @@ use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 #[derive(Clone, Debug)]
-pub struct MockWebsocketStream {
+pub(crate) struct MockWebsocketStream {
     written: Arc<Mutex<Vec<Vec<u8>>>>,
-    received: Arc<Mutex<Vec<Vec<u8>>>>,
     data_buffer: Arc<Mutex<VecDeque<Vec<u8>>>>,
 }
 
@@ -19,7 +18,6 @@ impl MockWebsocketStream {
     pub fn empty() -> MockWebsocketStream {
         MockWebsocketStream {
             written: Arc::new(Mutex::new(Vec::new())),
-            received: Arc::new(Mutex::new(Vec::new())),
             data_buffer: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
@@ -35,7 +33,6 @@ impl MockWebsocketStream {
 
         MockWebsocketStream {
             written,
-            received: Arc::new(Mutex::new(Vec::new())),
             data_buffer: Arc::new(Mutex::new(data_buffer)),
         }
     }
@@ -53,20 +50,6 @@ impl MockWebsocketStream {
         }
         Ok(unmasked_frames)
     }
-
-    pub fn received(&self) -> Vec<Vec<u8>> {
-        let guard = self.received.lock().unwrap();
-        guard.clone()
-    }
-
-    pub fn received_unmasked(&self) -> Result<Vec<String>, String> {
-        let mut unmasked_frames = Vec::new();
-        for frame in self.received().iter() {
-            let unmasked = String::from_utf8_lossy(frame);
-            unmasked_frames.push(unmasked.into_owned());
-        }
-        Ok(unmasked_frames)
-    }
 }
 
 impl AsyncRead for MockWebsocketStream {
@@ -81,9 +64,6 @@ impl AsyncRead for MockWebsocketStream {
         } else {
             buf.put_slice(&msg.as_ref().unwrap());
         }
-
-        let mut received_guard = this.received.lock().unwrap();
-        received_guard.push(msg.unwrap().to_vec());
 
         Poll::Ready(Ok(()))
     }
@@ -109,22 +89,17 @@ impl AsyncWrite for MockWebsocketStream {
 }
 
 fn create_close_frame() -> Vec<u8> {
-    let mut frame = Frame::close(1005, &[]);
+    let mut frame = Frame::close(1000, &[]);
     let mut buf = Vec::new();
-    frame.write(&mut buf);
-    buf
+    frame.write(&mut buf).into()
 }
 
 fn create_frame(text: &str) -> Vec<u8> {
     let mut frame = Frame::text(Payload::Owned(text.into()));
     let mut buf = Vec::new();
-    frame.write(&mut buf);
-    buf
+    frame.write(&mut buf).into()
 }
 
-/// Parse a single client WebSocket frame and unmask its payload.
-/// Supports payload lengths <= 2^63-1 (subject to usize on your platform).
-/// Returns an error string if the frame is malformed or unsupported.
 pub fn parse_and_unmask_frame(frame: &[u8]) -> Result<String, String> {
     if frame.len() < 2 {
         return Err("frame too short (missing header)".into());
