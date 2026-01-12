@@ -13,10 +13,10 @@ use std::future::Future;
 use tower::Service;
 
 use crate::communication::CommunicationFactory;
-use crate::{ArasError, ArasResult};
 use crate::protocols::{HTTPHandler, WebsocketHandler};
 use crate::scope::ScopeFactory;
 use crate::types::{ConnectionInfo, Response, ServiceFuture};
+use crate::{ArasError, ArasResult};
 
 #[derive(Clone)]
 pub struct ArasASGIService<A: ASGIApplication> {

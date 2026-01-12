@@ -1,15 +1,16 @@
+use fastwebsockets::{Frame, Payload};
+use std::collections::VecDeque;
 use std::io;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
-use tokio::io::{AsyncRead, AsyncWrite};
-use fastwebsockets::{Frame, Payload};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-/// A fake stream for testing network applications backed by buffers.
 #[derive(Clone, Debug)]
 pub struct MockWebsocketStream {
     written: Arc<Mutex<Vec<Vec<u8>>>>,
     received: Arc<Mutex<Vec<Vec<u8>>>>,
+    data_buffer: Arc<Mutex<VecDeque<Vec<u8>>>>,
 }
 
 impl Unpin for MockWebsocketStream {}
@@ -19,21 +20,26 @@ impl MockWebsocketStream {
         MockWebsocketStream {
             written: Arc::new(Mutex::new(Vec::new())),
             received: Arc::new(Mutex::new(Vec::new())),
+            data_buffer: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 
     pub fn new(messages: Vec<&str>) -> MockWebsocketStream {
         let written = Arc::new(Mutex::new(Vec::new()));
-        let mut received = vec![create_close_frame()];
+        let mut data_buffer = VecDeque::new();
+        
+        for message in messages.into_iter() {
+            data_buffer.push_back(create_frame(message));
+        };
+        data_buffer.push_back(create_close_frame());
 
-        for message in messages.into_iter().rev() {
-            received.push(create_frame(message));
-
+        MockWebsocketStream {
+            written,
+            received: Arc::new(Mutex::new(Vec::new())),
+            data_buffer: Arc::new(Mutex::new(data_buffer)),
         }
-
-        MockWebsocketStream { written, received: Arc::new(Mutex::new(received)) }
     }
-    
+
     pub fn written(&self) -> Vec<Vec<u8>> {
         let guard = self.written.lock().unwrap();
         guard.clone()
@@ -64,46 +70,41 @@ impl MockWebsocketStream {
 }
 
 impl AsyncRead for MockWebsocketStream {
-    fn poll_read(
-        self: std::pin::Pin<&mut Self>,
-        _: &mut std::task::Context<'_>,
-        buf: &mut tokio::io::ReadBuf<'_>,
-    ) -> std::task::Poll<io::Result<()>> {
+    fn poll_read(self: Pin<&mut Self>, _: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
         let this = self.get_mut();
 
-        let mut guard = this.received.lock().unwrap();
-        let msg = guard.pop();
+        let mut guard = this.data_buffer.lock().unwrap();
+        let msg = guard.pop_front();
 
         if msg.is_none() {
-            return std::task::Poll::Pending;
+            return Poll::Pending;
         } else {
-            buf.put_slice(&msg.unwrap());
+            buf.put_slice(&msg.as_ref().unwrap());
         }
 
-        std::task::Poll::Ready(Ok(()))
+        let mut received_guard = this.received.lock().unwrap();
+        received_guard.push(msg.unwrap().to_vec());
+
+        Poll::Ready(Ok(()))
     }
 }
 
 impl AsyncWrite for MockWebsocketStream {
-    fn poll_write(
-        self: std::pin::Pin<&mut Self>,
-        _: &mut std::task::Context<'_>,
-        buf: &[u8],
-    ) -> std::task::Poll<io::Result<usize>> {
+    fn poll_write(self: Pin<&mut Self>, _: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
 
         let mut guard = this.written.lock().unwrap();
         guard.push(buf.to_vec());
-        
-        std::task::Poll::Ready(Ok(buf.len()))
+
+        Poll::Ready(Ok(buf.len()))
     }
 
     fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        std::task::Poll::Ready(Ok(()))
+        Poll::Ready(Ok(()))
     }
 
     fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        std::task::Poll::Ready(Ok(()))
+        Poll::Ready(Ok(()))
     }
 }
 

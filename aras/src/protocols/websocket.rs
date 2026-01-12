@@ -237,6 +237,7 @@ mod tests {
     use bytes::Bytes;
     use std::result::Result;
     use std::sync::Arc;
+    use std::vec;
     use tokio::sync::Mutex;
     use tokio::time::error::Elapsed;
 
@@ -270,7 +271,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_handle_websocket_connection() {
+    async fn test_asgi_messages_are_send_to_client() {
+        let handler = WebsocketHandler::new(std::time::Duration::from_secs(5));
+        let (stream, ws) = build_websocket_client(None);
+
+        let mut send_to = SendToAppCollector::new();
+        let mut receive_from =
+            DeterministicReceiveFromApp::new(vec![
+                Ok(ASGISendEvent::new_websocket_send(None, Some("hello client".into()))),
+                Ok(ASGISendEvent::new_websocket_send(None, Some("im the server".into()))),
+                Ok(ASGISendEvent::new_websocket_close(None, "goodbye".into())),
+            ]);
+
+        let result = handler.run_accepted_websocket(&mut send_to, &mut receive_from, ws).await;
+        
+        assert!(result.is_ok());
+        
+        let written_to_stream = stream.written_unmasked().unwrap();
+        assert!(written_to_stream.len() == 3);
+        assert!(written_to_stream[0] == "hello client");
+        assert!(written_to_stream[1] == "im the server");
+        assert!(written_to_stream[2] == "goodbye");
+        
+        let send_to_app = send_to.get_messages().await;
+        assert!(send_to_app.len() == 1);
+        assert!(send_to_app[0] == ASGIReceiveEvent::new_websocket_disconnect(1005));
+    }
+
+    #[tokio::test]
+    async fn test_client_messages_are_send_to_asgi_app() {
         let handler = WebsocketHandler::new(std::time::Duration::from_secs(5));
         let (stream, ws) = build_websocket_client(Some(vec![
             "hello server",
@@ -278,18 +307,14 @@ mod tests {
         ]));
 
         let mut send_to = SendToAppCollector::new();
-        let mut receive_from =
-            DeterministicReceiveFromApp::new(vec![
-                Ok(ASGISendEvent::new_websocket_send(None, Some("hello client".into()))),
-                Ok(ASGISendEvent::new_websocket_send(None, Some("im the server".into()))),
-            ]);
+        let mut receive_from = DeterministicReceiveFromApp::new(vec![]);
 
         let result = handler.run_accepted_websocket(&mut send_to, &mut receive_from, ws).await;
         
-        println!("Result: {:?}", result);
-        println!("Send to app: {:?}", send_to.get_messages().await);
-        println!("Written to stream by server: {:?}", stream.written_unmasked().unwrap());
+        println!("Result: {:?} \n", result);
+        println!("Written to stream by server: {:?} \n", stream.written_unmasked().unwrap());
         println!("Stream received: {:?}", stream.received_unmasked().unwrap());
+        println!("Send to app by server: {:?}", send_to.get_messages().await);
     }
 
     #[tokio::test]
