@@ -9,7 +9,7 @@ use crate::events::*;
 use crate::scope::*;
 
 pub const ASGI_VERSION: &str = "3.0";
-pub const ASGI_SPEC_VERSION: &str = "2.4";
+pub const ASGI_SPEC_VERSION: &str = "2.5";
 
 #[derive(Debug)]
 pub struct DisconnectedClient;
@@ -163,8 +163,8 @@ impl ASGISendEvent {
         Self::WebsocketAccept(WebsocketAcceptEvent::new(subprotocol, headers))
     }
 
-    pub fn new_websocket_close(code: Option<usize>, reason: String) -> Self {
-        Self::WebsocketClose(WebsocketCloseEvent::new(code, reason))
+    pub fn new_websocket_close(code: u16, reason: String) -> Self {
+        Self::WebsocketClose(WebsocketCloseEvent::new(Some(code), reason))
     }
 
     pub fn new_websocket_send(bytes: Option<Bytes>, text: Option<String>) -> Self {
@@ -197,8 +197,8 @@ impl ASGIReceiveEvent {
         Self::WebsocketReceive(WebsocketReceiveEvent::new(bytes, text))
     }
 
-    pub fn new_websocket_disconnect(code: usize) -> Self {
-        Self::WebsocketDisconnect(WebsocketDisconnectEvent::new(code))
+    pub fn new_websocket_disconnect(code: u16, reason: String) -> Self {
+        Self::WebsocketDisconnect(WebsocketDisconnectEvent::new(code, reason))
     }
 }
 

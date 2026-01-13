@@ -73,7 +73,7 @@ where
         if is_upgrade_request(&request) {
             let scope = self.scope_factory.build_websocket(&self.connection, &request);
             let (send_to_app, receive_from_app) = self.communication_factory.build(scope);
-            let handler = WebsocketHandler::new(timeout);
+            let handler = WebsocketHandler::new(timeout, 1000, 100); // TIODO: make these configurable
             let fut = handler.handle(send_to_app, receive_from_app, request);
             Box::pin(handle_error(fut))
         } else {

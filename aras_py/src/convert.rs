@@ -148,14 +148,14 @@ pub fn parse_websocket_send(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEvent
 pub fn parse_websocket_close(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEvent> {
     let code = py_map
         .get_item("code")
-        .and_then(|inner| inner.extract::<usize>())
+        .and_then(|inner| inner.extract::<u16>())
         .unwrap_or(1000);
     let reason = py_map
         .get_item("reason")
         .and_then(|inner| inner.extract::<String>())
         .unwrap_or(String::new());
 
-    Ok(ASGISendEvent::new_websocket_close(Some(code), reason))
+    Ok(ASGISendEvent::new_websocket_close(code, reason))
 }
 
 pub fn websocket_receive_into_py<'py>(py: Python<'py>, event: WebsocketReceiveEvent) -> PyResult<Bound<'py, PyDict>> {

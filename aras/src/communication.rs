@@ -160,11 +160,11 @@ impl<A: ASGIApplication + 'static> CommunicationFactory<A> {
             let _ = result_producer.send(out);
         });
 
-        let state = ApplicationHandle::new(result_consumer);
+        let handle = ApplicationHandle::new(result_consumer);
 
         (
-            SendToApp::new(state.clone(), send_to_app),
-            ReceiveFromApp::new(state, receive_from_app),
+            SendToApp::new(handle.clone(), send_to_app),
+            ReceiveFromApp::new(handle, receive_from_app),
         )
     }
 }
