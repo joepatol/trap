@@ -49,7 +49,7 @@ impl WebsocketHandler {
         };
 
         let (upgrade_response, upgrade_future) = upgrade::upgrade(&mut request)?;
-        self.run_protocol(upgrade_future, send_to_app, receive_from_app);
+        tokio::task::spawn(self.run_protocol(upgrade_future, send_to_app, receive_from_app));
 
         merge_responses(app_response.into(), upgrade_response)
     }
@@ -63,27 +63,25 @@ impl WebsocketHandler {
         receive_from.receive().await?.try_into()
     }
 
-    fn run_protocol(
+    async fn run_protocol(
         self,
         upgrade_future: UpgradeFut,
         send_to_app: impl SendToASGIApp + 'static,
         receive_from_app: impl ReceiveFromASGIApp + 'static,
     ) {
-        tokio::task::spawn(async move {
-            let ws = match upgrade_future.await {
-                // ASGI requires unfragmented messages to the application. So just use FragmentCollector.
-                Ok(ws) => FragmentCollector::new(ws),
-                Err(e) => {
-                    error!("Websocket upgrade failed: {}", e);
-                    return;
-                }
-            };
-
-            let event_loop = WebsocketEventLoop::new(self.timeout);
-            if let Err(e) = event_loop.run(ws, send_to_app, receive_from_app).await {
-                error!("Websocket event loop terminated with error: {}", e);
+        let ws = match upgrade_future.await {
+            // ASGI requires unfragmented messages to the application. So just use FragmentCollector.
+            Ok(ws) => FragmentCollector::new(ws),
+            Err(e) => {
+                error!("Websocket upgrade failed: {}", e);
+                return;
             }
-        });
+        };
+
+        let event_loop = WebsocketEventLoop::new(self.timeout);
+        if let Err(e) = event_loop.run(ws, send_to_app, receive_from_app).await {
+            error!("Websocket event loop terminated with error: {}", e);
+        }
     }
 }
 
