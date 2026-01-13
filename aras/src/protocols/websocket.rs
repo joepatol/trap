@@ -238,6 +238,7 @@ impl From<Frame<'_>> for WebsocketState<'_> {
                 let asgi_event = ASGIReceiveEvent::new_websocket_receive(bytes, None);
                 Self::SendASGIEvent(asgi_event)
             }
+            // TODO: split closing into ClientClosing and ServerClosing?
             OpCode::Close => {
                 let data = bytes.unwrap_or(Bytes::new());
                 let text = String::from_utf8_lossy(&data);
@@ -300,7 +301,7 @@ impl From<ASGISendEvent> for WebsocketState<'_> {
                 let frames = builder.build(msg);
                 Self::SendFrames(frames)
             }
-            // Can reason be large than max frame size?
+            // TODO: Can reason be large than max frame size?
             ASGISendEvent::WebsocketClose(msg) => {
                 let payload = Payload::Owned(msg.reason.clone().into_bytes());
                 let frame = Frame::new(true, OpCode::Close, None, payload);
