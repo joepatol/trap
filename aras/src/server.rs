@@ -67,6 +67,8 @@ pub struct ArasServer {
     /// or receiving ASGI messages from the application.
     /// Allows for more granular control than the general request timeout
     backpressure_timeout: u64,
+    /// The max size of a single websocket frame in bytes. If a frame larger it will be fragmented.
+    max_ws_frame_size: usize,
 }
 
 impl<A> ASGIServer<A> for ArasServer
@@ -139,6 +141,7 @@ impl ArasServer {
                     communication_factory.clone(),
                     conn_info,
                     self.backpressure_timeout,
+                    self.max_ws_frame_size,
                 ));
 
             let svc = TowerToHyperService::new(svc);

@@ -55,6 +55,7 @@ fn generate_cancel_token() -> PyStopServerToken {
     rate_limit = (1000, 1),
     buffer_size = 1024,
     backpressure_timeout = 60,
+    max_ws_frame_size = 64 * 1024,
 ))]
 /// Serves a Python ASGI application using the ARAS server.
 ///
@@ -85,6 +86,7 @@ fn serve_python<'a>(
     rate_limit: (u64, u64),
     buffer_size: usize,
     backpressure_timeout: u64,
+    max_ws_frame_size: usize,
 ) -> PyResult<Bound<'a, PyAny>> {
     tracing_subscriber::fmt()
         .with_max_level(get_log_level_filter(log_level))
@@ -106,6 +108,7 @@ fn serve_python<'a>(
         (rate_limit.0, Duration::from_secs(rate_limit.1)),
         buffer_size,
         backpressure_timeout,
+        max_ws_frame_size,
     );
 
     pyo3_async_runtimes::tokio::future_into_py_with_locals(py, task_locals, async move {

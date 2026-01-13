@@ -19,4 +19,5 @@ def serve_python(
     rate_limit: tuple[int, int] = (1000, 1),
     buffer_size: int = 1024,
     backpressure_timeout: int = 60,
+    max_ws_frame_size: int = 64 * 1024,
 ) -> Awaitable[None]: ...

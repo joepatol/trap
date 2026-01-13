@@ -7,10 +7,9 @@ use std::time::Duration;
 use asgispec::events::{WebsocketAcceptEvent, WebsocketCloseEvent, WebsocketSendEvent};
 use asgispec::prelude::*;
 use bytes::Bytes;
-use bytes::BytesMut;
 use derive_more::derive::Constructor;
 use fastwebsockets::upgrade::UpgradeFut;
-use fastwebsockets::{upgrade, FragmentCollector, Frame, OpCode, Payload, WebSocketError, CloseCode};
+use fastwebsockets::{upgrade, CloseCode, FragmentCollector, Frame, OpCode, Payload, WebSocketError};
 use http::StatusCode;
 use http_body_util::{BodyExt, Empty, Full};
 use hyper::body::Body;
@@ -23,37 +22,11 @@ use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
 use crate::types::Response;
 use crate::{ArasError, ArasResult};
 
-#[derive(Constructor)]
-struct FrameBuilder {
-    _max_message_size: u64,
-    _max_frame_size: usize,
-}
-
-impl FrameBuilder {
-    fn build_frames(&self, asgi_event: WebsocketSendEvent) -> VecDeque<Frame<'static>> {
-        // TODO: implement fragmentation based on max_message_size and max_frame_size
-        // TODO: check for max message size should be moved
-        let mut frames = VecDeque::new();
-        if let Some(data) = asgi_event.text {
-            let payload = Payload::Owned(data.into_bytes());
-            let frame = Frame::new(true, OpCode::Text, None, payload);
-            frames.push_back(frame);
-        }
-        if let Some(data) = asgi_event.bytes {
-            let payload = Payload::Bytes(BytesMut::from(&data[..]));
-            let frame = Frame::new(true, OpCode::Binary, None, payload);
-            frames.push_back(frame);
-        }
-        frames
-    }
-}
-
 static FRAME_BUILDER: OnceLock<FrameBuilder> = OnceLock::new();
 
 #[derive(Constructor)]
 pub(crate) struct WebsocketHandler {
     timeout: Duration,
-    max_message_size: u64,
     max_frame_size: usize,
 }
 
@@ -68,7 +41,7 @@ impl WebsocketHandler {
         B: Body + Send + 'static,
         B::Error: Display,
     {
-        FRAME_BUILDER.get_or_init(|| FrameBuilder::new(self.max_message_size, self.max_frame_size));
+        FRAME_BUILDER.get_or_init(|| FrameBuilder::new(self.max_frame_size));
 
         let app_response = self.accept(&mut send_to_app, &mut receive_from_app).await?;
         if !app_response.accepted() {
@@ -98,7 +71,7 @@ impl WebsocketHandler {
     ) {
         tokio::task::spawn(async move {
             let ws = match upgrade_future.await {
-                // ASGI requires unfragmented messages to the application. Hence, fragment collector is the simplest.
+                // ASGI requires unfragmented messages to the application. So just use FragmentCollector.
                 Ok(ws) => FragmentCollector::new(ws),
                 Err(e) => {
                     error!("Websocket upgrade failed: {}", e);
@@ -120,6 +93,8 @@ struct WebsocketEventLoop {
 }
 
 impl WebsocketEventLoop {
+    /// Run the websocket event loop until the connection is closed or state execution fails.
+    /// When state execution fails an error is retuned, no close messages are sent to the client or ASGI app.
     pub async fn run(
         &self,
         mut ws: FragmentCollector<impl AsyncRead + AsyncWrite + Unpin>,
@@ -127,94 +102,88 @@ impl WebsocketEventLoop {
         mut receive_from_app: impl ReceiveFromASGIApp,
     ) -> ArasResult<()> {
         let mut executed_event;
-        let mut event = WebsocketEvent::Start;
+        let mut state = WebsocketState::Start;
 
-        while !matches!(event, WebsocketEvent::Closed) {
-            // TODO: when event execution fails we break and return an error.
+        while !matches!(state, WebsocketState::Closed) {
+            // TODO: when state execution fails we break and return an error.
             // Should we send close messages to both client and ASGI app as well?
-            executed_event = event.execute(&mut ws, &mut send_to_app).await?;
-            event = self.get_next_event(executed_event, &mut ws, &mut receive_from_app).await;
+            executed_event = state.execute(&mut ws, &mut send_to_app).await?;
+            state = self.next(executed_event, &mut ws, &mut receive_from_app).await;
         }
 
         Ok(())
     }
-    
-    async fn get_next_event(
+
+    /// Determine the next state based on the executed event and incoming events
+    /// from the client (websocket frames) and the ASGI application.
+    async fn next(
         &self,
-        event: ExecutedEvent,
+        state: ExecutedState,
         ws: &mut FragmentCollector<impl AsyncRead + AsyncWrite + Unpin>,
         receive_from_app: &mut impl ReceiveFromASGIApp,
-    ) -> WebsocketEvent<'_> {
-        if let ExecutedEvent::Closed = event {
-            return WebsocketEvent::Closed;
+    ) -> WebsocketState<'_> {
+        if let ExecutedState::Closed = state {
+            return WebsocketState::Closed;
         }
 
-        if let ExecutedEvent::Closing = event {
-            return WebsocketEvent::Closed;
+        if let ExecutedState::Closing = state {
+            return WebsocketState::Closed;
         }
 
         tokio::select! {
-            out = ws.read_frame() => WebsocketEvent::from(out),
-            out = tokio::time::timeout(self.timeout, receive_from_app.receive()) => WebsocketEvent::from(out),
+            out = ws.read_frame() => WebsocketState::from(out),
+            out = tokio::time::timeout(self.timeout, receive_from_app.receive()) => WebsocketState::from(out),
         }
     }
-}   
+}
 
-/// Determines next step when receiving either a frame from the client or an ASGI event from the application
-enum WebsocketEvent<'a> {
-    // Nothing happened yet, need to start
+/// States the websocket event loop can be in
+enum WebsocketState<'a> {
+    // Starting state, wait for first event
     Start,
-    // Send some frames to the client
-    Frames(VecDeque<Frame<'a>>),
-    // Send an event to the ASGI application
-    ASGIEvent(ASGIReceiveEvent),
-    // We're closing the connection, send close event and close frame
+    // Got some frames from the app to send to the client
+    SendFrames(VecDeque<Frame<'a>>),
+    // Got frames from the client to send to the app
+    SendASGIEvent(ASGIReceiveEvent),
+    // Connection about to close, send close event and close frame
     Closing(ASGIReceiveEvent, Frame<'a>),
-    // Closed
+    // Connection is closed
     Closed,
 }
 
-enum ExecutedEvent {
+/// Each state corresponds to some work to be done
+/// This enum represents the states after the work was done
+enum ExecutedState {
     Start,
-    Frames,
-    ASGIEvent,
+    SendFrames,
+    SendASGIEvent,
     Closing,
     Closed,
 }
 
-impl From<&WebsocketEvent<'_>> for ExecutedEvent {
-    fn from(value: &WebsocketEvent<'_>) -> Self {
-        match value {
-            WebsocketEvent::Start => ExecutedEvent::Start,
-            WebsocketEvent::Frames(_) => ExecutedEvent::Frames,
-            WebsocketEvent::ASGIEvent(_) => ExecutedEvent::ASGIEvent,
-            WebsocketEvent::Closing(_, _) => ExecutedEvent::Closing,
-            WebsocketEvent::Closed => ExecutedEvent::Closed,
-        }
-    }
-}
-
-impl<'a> WebsocketEvent<'a> {
+impl<'a> WebsocketState<'a> {
+    /// Execute the work associated with this state and return the
+    /// resulting state. If executing the work fails an error is returned.
     async fn execute(
         self,
         ws: &mut FragmentCollector<impl AsyncRead + AsyncWrite + Unpin>,
         send_to_app: &mut impl SendToASGIApp,
-    ) -> ArasResult<ExecutedEvent> {
-        let executed_event = ExecutedEvent::from(&self);
+    ) -> ArasResult<ExecutedState> {
+        let executed_event = ExecutedState::from(&self);
 
         match self {
-            WebsocketEvent::Frames(mut frames) => {
+            WebsocketState::SendFrames(mut frames) => {
                 while let Some(frame) = frames.pop_front() {
                     ws.write_frame(frame).await?;
-                };
+                }
             }
-            WebsocketEvent::ASGIEvent(asgi_event) => {
+            WebsocketState::SendASGIEvent(asgi_event) => {
                 send_to_app.send(asgi_event).await?;
             }
-            WebsocketEvent::Closing(asgi_event, frame) => {
+            WebsocketState::Closing(asgi_event, frame) => {
                 ws.write_frame(frame).await?;
                 send_to_app.send(asgi_event).await?;
-            },
+            }
             _ => {}
         };
 
@@ -222,9 +191,22 @@ impl<'a> WebsocketEvent<'a> {
     }
 }
 
+/// State transitions when executing a state
+impl From<&WebsocketState<'_>> for ExecutedState {
+    fn from(value: &WebsocketState<'_>) -> Self {
+        match value {
+            WebsocketState::Start => ExecutedState::Start,
+            WebsocketState::SendFrames(_) => ExecutedState::SendFrames,
+            WebsocketState::SendASGIEvent(_) => ExecutedState::SendASGIEvent,
+            WebsocketState::Closing(_, _) => ExecutedState::Closing,
+            WebsocketState::Closed => ExecutedState::Closed,
+        }
+    }
+}
+
 /// State transitions when receiving a frame from the client
-impl<'a> From<StdResult<Frame<'a>, WebSocketError>> for WebsocketEvent<'a> {
-    fn from(value: StdResult<Frame<'a>, WebSocketError>) -> Self {
+impl From<StdResult<Frame<'_>, WebSocketError>> for WebsocketState<'_> {
+    fn from(value: StdResult<Frame<'_>, WebSocketError>) -> Self {
         match value {
             Ok(frame) => Self::from(frame),
             Err(e) => {
@@ -236,7 +218,7 @@ impl<'a> From<StdResult<Frame<'a>, WebSocketError>> for WebsocketEvent<'a> {
     }
 }
 
-impl From<Frame<'_>> for WebsocketEvent<'_> {
+impl From<Frame<'_>> for WebsocketState<'_> {
     fn from(value: Frame<'_>) -> Self {
         let bytes = match value.payload {
             Payload::Bytes(b) => Some(Bytes::from(b)),
@@ -250,21 +232,24 @@ impl From<Frame<'_>> for WebsocketEvent<'_> {
                 let data = bytes.unwrap_or(Bytes::new());
                 let text = String::from_utf8_lossy(&data);
                 let asgi_event = ASGIReceiveEvent::new_websocket_receive(None, Some(text.into()));
-                Self::ASGIEvent(asgi_event)
-            },
+                Self::SendASGIEvent(asgi_event)
+            }
             OpCode::Binary => {
                 let asgi_event = ASGIReceiveEvent::new_websocket_receive(bytes, None);
-                Self::ASGIEvent(asgi_event)
-            },
+                Self::SendASGIEvent(asgi_event)
+            }
             OpCode::Close => {
                 let data = bytes.unwrap_or(Bytes::new());
                 let text = String::from_utf8_lossy(&data);
                 let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(CloseCode::Normal.into(), text.into());
                 let frame = Frame::close(CloseCode::Normal.into(), "Client closed connection".as_bytes());
                 Self::Closing(asgi_event, frame)
-            },
+            }
             _ => {
-                let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(CloseCode::Error.into(), String::from("unexpected opcode"));
+                let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(
+                    CloseCode::Error.into(),
+                    String::from("unexpected opcode"),
+                );
                 let frame = Frame::close(CloseCode::Error.into(), "Unexpected opcode".as_bytes());
                 Self::Closing(asgi_event, frame)
             }
@@ -273,7 +258,7 @@ impl From<Frame<'_>> for WebsocketEvent<'_> {
 }
 
 /// State transitions when receiving an ASGI event from the application
-impl From<StdResult<ArasResult<ASGISendEvent>, Elapsed>> for WebsocketEvent<'_> {
+impl From<StdResult<ArasResult<ASGISendEvent>, Elapsed>> for WebsocketState<'_> {
     fn from(value: StdResult<ArasResult<ASGISendEvent>, Elapsed>) -> Self {
         match value {
             Ok(msg) => Self::from(msg),
@@ -281,8 +266,8 @@ impl From<StdResult<ArasResult<ASGISendEvent>, Elapsed>> for WebsocketEvent<'_> 
                 let payload = Payload::Owned(String::from("Internal server error").into_bytes());
                 let frame = Frame::new(true, OpCode::Close, None, payload);
                 let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(
-                    CloseCode::Error.into(), 
-                    format!("Timeout receiving ASGI message in websocket loop")
+                    CloseCode::Error.into(),
+                    format!("Timeout receiving ASGI message in websocket loop"),
                 );
                 Self::Closing(asgi_event, frame)
             }
@@ -290,7 +275,7 @@ impl From<StdResult<ArasResult<ASGISendEvent>, Elapsed>> for WebsocketEvent<'_> 
     }
 }
 
-impl From<ArasResult<ASGISendEvent>> for WebsocketEvent<'_> {
+impl From<ArasResult<ASGISendEvent>> for WebsocketState<'_> {
     fn from(value: ArasResult<ASGISendEvent>) -> Self {
         match value {
             Ok(msg) => Self::from(msg),
@@ -298,8 +283,8 @@ impl From<ArasResult<ASGISendEvent>> for WebsocketEvent<'_> {
                 let payload = Payload::Owned(String::from("Internal server error").into_bytes());
                 let frame = Frame::new(true, OpCode::Close, None, payload);
                 let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(
-                    CloseCode::Error.into(), 
-                    format!("Error receiving ASGI message in websocket loop: {e}")
+                    CloseCode::Error.into(),
+                    format!("Error receiving ASGI message in websocket loop: {e}"),
                 );
                 Self::Closing(asgi_event, frame)
             }
@@ -307,27 +292,27 @@ impl From<ArasResult<ASGISendEvent>> for WebsocketEvent<'_> {
     }
 }
 
-impl From<ASGISendEvent> for WebsocketEvent<'_> {
+impl From<ASGISendEvent> for WebsocketState<'_> {
     fn from(value: ASGISendEvent) -> Self {
         match value {
             ASGISendEvent::WebsocketSend(msg) => {
                 let builder = FRAME_BUILDER.get().expect("FrameBuilder not initialized");
-                let frames = builder.build_frames(msg);
-                Self::Frames(frames)
+                let frames = builder.build(msg);
+                Self::SendFrames(frames)
             }
+            // Can reason be large than max frame size?
             ASGISendEvent::WebsocketClose(msg) => {
-                let payload = Payload::Owned(msg.reason.into_bytes());
+                let payload = Payload::Owned(msg.reason.clone().into_bytes());
                 let frame = Frame::new(true, OpCode::Close, None, payload);
-                let mut frames = VecDeque::new();
-                frames.push_back(frame);
-                Self::Frames(frames)
+                let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(msg.code.into(), msg.reason);
+                Self::Closing(asgi_event, frame)
             }
             event => {
                 let payload = Payload::Owned(String::from("Internal server error").into_bytes());
                 let frame = Frame::new(true, OpCode::Close, None, payload);
                 let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(
-                    CloseCode::Error.into(), 
-                    format!("Received invalid ASGI message in websocket loop. Got: {event:?}")
+                    CloseCode::Error.into(),
+                    format!("Received invalid ASGI message in websocket loop. Got: {event:?}"),
                 );
                 Self::Closing(asgi_event, frame)
             }
@@ -376,7 +361,7 @@ impl TryFrom<WebsocketAcceptEvent> for WsConnectResponse {
         let body = Full::new(Vec::<u8>::new().into())
             .map_err(|never| match never {})
             .boxed();
-            builder = builder.status(StatusCode::SWITCHING_PROTOCOLS);
+        builder = builder.status(StatusCode::SWITCHING_PROTOCOLS);
         if value.subprotocol.is_some() {
             builder = builder.header(hyper::header::SEC_WEBSOCKET_PROTOCOL, value.subprotocol.unwrap())
         };
@@ -398,6 +383,84 @@ impl TryFrom<WebsocketCloseEvent> for WsConnectResponse {
     }
 }
 
+/// Build websocket frames from ASGI websocket send events.
+/// Frames are fragmented according to the max_frame_size.
+#[derive(Constructor)]
+struct FrameBuilder {
+    max_frame_size: usize,
+}
+
+impl FrameBuilder {
+    fn build(&self, asgi_event: WebsocketSendEvent) -> VecDeque<Frame<'static>> {
+        let chunks;
+        let op_code;
+        let mut frames = VecDeque::new();
+
+        if let Some(data) = asgi_event.text {
+            chunks = self.split_string(data);
+            op_code = OpCode::Text;
+        } else if let Some(data) = asgi_event.bytes {
+            chunks = self.split_bytes(data);
+            op_code = OpCode::Binary;
+        } else {
+            chunks = Vec::new();
+            op_code = OpCode::Binary;
+        }
+
+        let frame_count = chunks.len().max(1);
+
+        let first_frame = Frame::new(
+            frame_count == 1,
+            op_code,
+            None,
+            Payload::Owned(chunks.first().unwrap_or(&Bytes::new()).to_vec()),
+        );
+        frames.push_back(first_frame);
+
+        if frame_count == 1 {
+            return frames;
+        }
+
+        if frame_count > 2 {
+            for chunk in chunks.iter().skip(1).take(frame_count - 2) {
+                let frame = Frame::new(false, OpCode::Continuation, None, Payload::Owned(chunk.to_vec()));
+                frames.push_back(frame);
+            }
+        }
+
+        let last_frame = Frame::new(
+            true,
+            OpCode::Continuation,
+            None,
+            Payload::Owned(chunks.last().unwrap_or(&Bytes::new()).to_vec()),
+        );
+        frames.push_back(last_frame);
+
+        frames
+    }
+
+    fn split_bytes(&self, data: Bytes) -> Vec<Bytes> {
+        if data.len() <= self.max_frame_size {
+            return vec![data];
+        };
+
+        let mut chunks = Vec::new();
+        let mut start = 0;
+        while start < data.len() {
+            let end = std::cmp::min(start + self.max_frame_size, data.len());
+            chunks.push(data.slice(start..end));
+            start = end;
+        }
+        chunks
+    }
+
+    fn split_string(&self, data: String) -> Vec<Bytes> {
+        let bytes = data.into_bytes();
+        self.split_bytes(Bytes::from(bytes))
+    }
+}
+
+/// Merge the ASGI application response and the websocket upgrade response.
 fn merge_responses(app_response: Response, upgrade_response: http::Response<Empty<Bytes>>) -> ArasResult<Response> {
     let mut merged_response = http::Response::builder().status(upgrade_response.status());
     for (k, v) in upgrade_response.headers() {
@@ -410,145 +473,145 @@ fn merge_responses(app_response: Response, upgrade_response: http::Response<Empt
     Ok(merged_response.body(body)?)
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::WebsocketHandler;
+#[cfg(test)]
+mod tests {
+    use super::{WebsocketHandler, WebsocketEventLoop, FrameBuilder};
 
-//     use std::sync::Arc;
-//     use std::vec;
-//     use tokio::sync::Mutex;
+    use std::time::Duration;
+    use std::vec;
 
-//     use asgispec::prelude::*;
-//     use fastwebsockets::{FragmentCollector, Role, WebSocket};
-//     use http::Request;
+    use asgispec::prelude::*;
+    use fastwebsockets::{FragmentCollector, Role, WebSocket};
+    use http::Request;
 
-//     use crate::mocks::communication::{DeterministicReceiveFromApp, SendToAppCollector};
-//     use crate::mocks::stream::MockWebsocketStream;
+    use crate::mocks::communication::{DeterministicReceiveFromApp, SendToAppCollector};
+    use crate::mocks::stream::MockWebsocketStream;
+    use crate::protocols::websocket::FRAME_BUILDER;
 
-//     fn build_websocket_request() -> Request<String> {
-//         Request::builder()
-//             .header("Connection", "Upgrade")
-//             .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
-//             .header("sec-websocket-version", "13")
-//             .body("".to_string())
-//             .expect("Failed to build request")
-//     }
+    fn build_websocket_request() -> Request<String> {
+        Request::builder()
+            .header("Connection", "Upgrade")
+            .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
+            .header("sec-websocket-version", "13")
+            .body("".to_string())
+            .expect("Failed to build request")
+    }
 
-//     fn build_websocket_client(
-//         messages: Option<Vec<&str>>,
-//     ) -> (MockWebsocketStream, Arc<Mutex<FragmentCollector<MockWebsocketStream>>>) {
-//         let stream;
-//         if messages.is_some() {
-//             stream = MockWebsocketStream::new(messages.unwrap());
-//         } else {
-//             stream = MockWebsocketStream::empty();
-//         }
-//         let ws = WebSocket::after_handshake(stream.clone(), Role::Client);
-//         let arc_ws = Arc::new(Mutex::new(FragmentCollector::new(ws)));
-//         (stream, arc_ws)
-//     }
+    fn build_websocket_client(
+        messages: Option<Vec<&str>>,
+    ) -> (MockWebsocketStream, FragmentCollector<MockWebsocketStream>) {
+        let stream;
+        if messages.is_some() {
+            stream = MockWebsocketStream::new(messages.unwrap());
+        } else {
+            stream = MockWebsocketStream::empty();
+        }
+        let ws = WebSocket::after_handshake(stream.clone(), Role::Client);
+        let arc_ws = FragmentCollector::new(ws);
+        (stream, arc_ws)
+    }
 
-//     #[tokio::test]
-//     async fn test_asgi_messages_are_send_to_client() {
-//         let handler = WebsocketHandler::new(std::time::Duration::from_secs(5));
-//         let (stream, ws) = build_websocket_client(None);
+    #[tokio::test]
+    async fn test_asgi_messages_are_send_to_client() {
+        FRAME_BUILDER.get_or_init(|| FrameBuilder::new(1024));
+        let (stream, ws) = build_websocket_client(None);
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_websocket_send(None, Some("hello client".into()))),
+            Ok(ASGISendEvent::new_websocket_send(None, Some("im the server".into()))),
+            Ok(ASGISendEvent::new_websocket_close(1000, "goodbye".into())),
+        ]);
+        let event_loop = WebsocketEventLoop::new(Duration::from_secs(5));
 
-//         let mut send_to = SendToAppCollector::new();
-//         let mut receive_from = DeterministicReceiveFromApp::new(vec![
-//             Ok(ASGISendEvent::new_websocket_send(None, Some("hello client".into()))),
-//             Ok(ASGISendEvent::new_websocket_send(None, Some("im the server".into()))),
-//             Ok(ASGISendEvent::new_websocket_close(None, "goodbye".into())),
-//         ]);
+        let result = event_loop.run(ws, send_to.clone(), receive_from).await;
 
-//         let result = handler.run_protocol(&mut send_to, &mut receive_from, ws).await;
+        assert!(result.is_ok());
 
-//         assert!(result.is_ok());
+        let written_to_stream = stream.written_unmasked().unwrap();
+        assert!(written_to_stream.len() == 3);
+        assert!(written_to_stream[0] == "hello client");
+        assert!(written_to_stream[1] == "im the server");
+        assert!(written_to_stream[2] == "goodbye");
 
-//         let written_to_stream = stream.written_unmasked().unwrap();
-//         assert!(written_to_stream.len() == 3);
-//         assert!(written_to_stream[0] == "hello client");
-//         assert!(written_to_stream[1] == "im the server");
-//         assert!(written_to_stream[2] == "goodbye");
+        let send_to_app = send_to.get_messages().await;
+        assert!(send_to_app.len() == 1);
+        assert!(matches!(send_to_app[0], ASGIReceiveEvent::WebsocketDisconnect(_)));
+    }
 
-//         let send_to_app = send_to.get_messages().await;
-//         assert!(send_to_app.len() == 1);
-//         assert!(send_to_app[0] == ASGIReceiveEvent::new_websocket_disconnect(1005));
-//     }
+    #[tokio::test]
+    async fn test_client_messages_are_send_to_asgi_app() {
+        let (_, ws) = build_websocket_client(Some(vec!["hello server", "im the client"]));
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![]);
 
-//     #[tokio::test]
-//     async fn test_client_messages_are_send_to_asgi_app() {
-//         let handler = WebsocketHandler::new(std::time::Duration::from_secs(5));
-//         let (_, ws) = build_websocket_client(Some(vec!["hello server", "im the client"]));
+        let event_loop = WebsocketEventLoop::new(Duration::from_secs(5));
 
-//         let mut send_to = SendToAppCollector::new();
-//         let mut receive_from = DeterministicReceiveFromApp::new(vec![]);
+        let result = event_loop.run(ws, send_to.clone(), receive_from).await;
+        println!("{:?}", result);
+        assert!(result.is_ok());
 
-//         let result = handler.run_protocol(&mut send_to, &mut receive_from, ws).await;
-//         println!("{:?}", result);
-//         assert!(result.is_ok());
+        let send_to_app = send_to.get_messages().await;
+        assert!(send_to_app.len() == 3);
+        assert!(send_to_app[0] == ASGIReceiveEvent::new_websocket_receive(None, Some("hello server".into())));
+        assert!(send_to_app[1] == ASGIReceiveEvent::new_websocket_receive(None, Some("im the client".into())));
+    }
 
-//         let send_to_app = send_to.get_messages().await;
-//         assert!(send_to_app.len() == 3);
-//         assert!(send_to_app[0] == ASGIReceiveEvent::new_websocket_receive(None, Some("hello server".into())));
-//         assert!(send_to_app[1] == ASGIReceiveEvent::new_websocket_receive(None, Some("im the client".into())));
-//     }
+    #[tokio::test]
+    async fn test_accept_websocket_connection() {
+        let handler = WebsocketHandler::new(std::time::Duration::from_secs(5), 1000);
+        let request = build_websocket_request();
 
-//     #[tokio::test]
-//     async fn test_accept_websocket_connection() {
-//         let handler = WebsocketHandler::new(std::time::Duration::from_secs(5));
-//         let request = build_websocket_request();
+        let send_to = SendToAppCollector::new();
+        let receive_from =
+            DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(None, vec![]))]);
 
-//         let send_to = SendToAppCollector::new();
-//         let receive_from =
-//             DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(None, vec![]))]);
+        let response = handler.handle(send_to, receive_from, request).await;
 
-//         let response = handler.handle(send_to, receive_from, request).await;
+        assert!(response.is_ok());
 
-//         assert!(response.is_ok());
+        let response = response.unwrap();
 
-//         let response = response.unwrap();
+        assert!(response.status() == http::StatusCode::SWITCHING_PROTOCOLS);
+        assert!(response.headers().get("sec-websocket-accept").is_some());
+        assert!(response.headers().get("connection").unwrap() == "upgrade");
+        assert!(response.headers().get("upgrade").unwrap() == "websocket");
+    }
 
-//         assert!(response.status() == http::StatusCode::SWITCHING_PROTOCOLS);
-//         assert!(response.headers().get("sec-websocket-accept").is_some());
-//         assert!(response.headers().get("connection").unwrap() == "upgrade");
-//         assert!(response.headers().get("upgrade").unwrap() == "websocket");
-//     }
+    #[tokio::test]
+    async fn test_accept_websocket_connection_additional_headers() {
+        let handler = WebsocketHandler::new(std::time::Duration::from_secs(5), 1000);
+        let request = build_websocket_request();
 
-//     #[tokio::test]
-//     async fn test_accept_websocket_connection_additional_headers() {
-//         let handler = WebsocketHandler::new(std::time::Duration::from_secs(5));
-//         let request = build_websocket_request();
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(
+            None,
+            vec![(b"X-Custom-Header".to_vec(), b"CustomValue".to_vec())],
+        ))]);
 
-//         let send_to = SendToAppCollector::new();
-//         let receive_from = DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(
-//             None,
-//             vec![(b"X-Custom-Header".to_vec(), b"CustomValue".to_vec())],
-//         ))]);
+        let response = handler.handle(send_to, receive_from, request).await;
 
-//         let response = handler.handle(send_to, receive_from, request).await;
+        assert!(response.is_ok());
 
-//         assert!(response.is_ok());
+        let response = response.unwrap();
 
-//         let response = response.unwrap();
+        assert!(response.headers().get("X-Custom-Header").unwrap() == "CustomValue");
+        assert!(response.headers().len() == 4);
+    }
 
-//         assert!(response.headers().get("X-Custom-Header").unwrap() == "CustomValue");
-//         assert!(response.headers().len() == 4);
-//     }
+    #[tokio::test]
+    async fn test_duplicate_headers() {
+        let handler = WebsocketHandler::new(std::time::Duration::from_secs(5), 1000);
+        let request = build_websocket_request();
 
-//     #[tokio::test]
-//     async fn test_duplicate_headers() {
-//         let handler = WebsocketHandler::new(std::time::Duration::from_secs(5));
-//         let request = build_websocket_request();
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(
+            None,
+            vec![(b"sec-websocket-accept".to_vec(), b"CustomValue".to_vec())],
+        ))]);
 
-//         let send_to = SendToAppCollector::new();
-//         let receive_from = DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(
-//             None,
-//             vec![(b"sec-websocket-accept".to_vec(), b"CustomValue".to_vec())],
-//         ))]);
+        let response = handler.handle(send_to, receive_from, request).await;
 
-//         let response = handler.handle(send_to, receive_from, request).await;
-
-//         assert!(response.is_ok());
-//         assert!(response.unwrap().headers().len() == 4);
-//     }
-// }
+        assert!(response.is_ok());
+        assert!(response.unwrap().headers().len() == 4);
+    }
+}

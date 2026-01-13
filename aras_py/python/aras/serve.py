@@ -17,6 +17,7 @@ def serve(
     rate_limit: tuple[int, int] = (1000, 1),
     buffer_size: int = 1024,
     backpressure_timeout: int = 60,
+    max_ws_frame_size: int = 64 * 1024,
 ) -> None:
     loop = asyncio.new_event_loop()
     token = generate_cancel_token()
@@ -39,5 +40,6 @@ def serve(
             rate_limit=rate_limit,
             buffer_size=buffer_size,
             backpressure_timeout=backpressure_timeout,
+            max_ws_frame_size=max_ws_frame_size,
         )
     )

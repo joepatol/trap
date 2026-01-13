@@ -24,10 +24,11 @@ pub struct ArasASGIService<A: ASGIApplication> {
     communication_factory: CommunicationFactory<A>,
     connection: ConnectionInfo,
     asgi_timeout_secs: u64,
+    max_ws_frame_size: usize,
 }
 
 impl<A: ASGIApplication> ArasASGIService<A> {
-    pub fn new(application: A, state: A::State, connection: ConnectionInfo, asgi_timeout_secs: u64) -> Self {
+    pub fn new(application: A, state: A::State, connection: ConnectionInfo, asgi_timeout_secs: u64, max_ws_frame_size: usize) -> Self {
         let scope_factory = ScopeFactory::new(state);
         let communication_factory = CommunicationFactory::new(application);
         Self {
@@ -35,6 +36,7 @@ impl<A: ASGIApplication> ArasASGIService<A> {
             communication_factory,
             connection,
             asgi_timeout_secs,
+            max_ws_frame_size,
         }
     }
 
@@ -43,12 +45,14 @@ impl<A: ASGIApplication> ArasASGIService<A> {
         communication_factory: CommunicationFactory<A>,
         connection: ConnectionInfo,
         asgi_timeout_secs: u64,
+        max_ws_frame_size: usize,
     ) -> Self {
         Self {
             scope_factory,
             communication_factory,
             connection,
             asgi_timeout_secs,
+            max_ws_frame_size,
         }
     }
 }
@@ -73,7 +77,7 @@ where
         if is_upgrade_request(&request) {
             let scope = self.scope_factory.build_websocket(&self.connection, &request);
             let (send_to_app, receive_from_app) = self.communication_factory.build(scope);
-            let handler = WebsocketHandler::new(timeout, 1000, 100); // TIODO: make these configurable
+            let handler = WebsocketHandler::new(timeout, self.max_ws_frame_size);
             let fut = handler.handle(send_to_app, receive_from_app, request);
             Box::pin(handle_error(fut))
         } else {

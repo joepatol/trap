@@ -82,6 +82,13 @@ def cli() -> None:
     help="Number of seconds the server will wait for an expected ASGI event",
     show_default=True,
 )
+@click.option(
+    "--max-ws-frame-size",
+    type=int,
+    default=64 * 1024,
+    help="Set the max size of a single websocket frame in bytes",
+    show_default=True,
+)
 def serve(
     application: str,
     host: str,
@@ -94,6 +101,7 @@ def serve(
     rate_limit: tuple[int, int],
     buffer_size: int,
     backpressure_timeout: int,
+    max_ws_frame_size: int,
 ) -> None:
     # Insert current working directory to sys.path to make sure the dynamic import,
     # which is referenced from the cwd, works correctly.
@@ -122,4 +130,5 @@ def serve(
         rate_limit,
         buffer_size,
         backpressure_timeout,
+        max_ws_frame_size
     )
