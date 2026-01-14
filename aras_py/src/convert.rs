@@ -176,7 +176,7 @@ pub fn websocket_disconnect_into_py<'py>(py: Python<'py>, event: WebsocketDiscon
     let python_result_dict = PyDict::new(py);
     python_result_dict.set_item("type", "websocket.disconnect".into_pyobject(py)?)?;
     python_result_dict.set_item("code", event.code.into_pyobject(py)?)?;
-    python_result_dict.set_item("reason", String::new().into_pyobject(py)?)?;
+    python_result_dict.set_item("reason", event.reason.into_pyobject(py)?)?;
     Ok(python_result_dict)
 }
 

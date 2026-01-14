@@ -14,9 +14,8 @@ use http::StatusCode;
 use http_body_util::{BodyExt, Empty, Full};
 use hyper::body::Body;
 use hyper::Request;
-use log::{error};
+use log::{error, info};
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::time::error::Elapsed;
 
 use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
 use crate::types::Response;
@@ -78,7 +77,7 @@ impl WebsocketHandler {
             }
         };
 
-        let event_loop = WebsocketEventLoop::new(self.timeout);
+        let event_loop = WebsocketEventLoop::new();
         if let Err(e) = event_loop.run(ws, send_to_app, receive_from_app).await {
             error!("Websocket event loop terminated with error: {}", e);
         }
@@ -86,9 +85,7 @@ impl WebsocketHandler {
 }
 
 #[derive(Constructor)]
-struct WebsocketEventLoop {
-    timeout: Duration,
-}
+struct WebsocketEventLoop;
 
 impl WebsocketEventLoop {
     /// Run the websocket event loop until the connection is closed or state execution fails.
@@ -124,7 +121,7 @@ impl WebsocketEventLoop {
 
         tokio::select! {
             out = ws.read_frame() => WebsocketState::from(out),
-            out = tokio::time::timeout(self.timeout, receive_from_app.receive()) => WebsocketState::from(out),
+            out = receive_from_app.receive() => WebsocketState::from(out),
         }
     }
 }
@@ -169,9 +166,11 @@ impl<'a> WebsocketState<'a> {
                 }
             }
             WebsocketState::SendASGIEvent(asgi_event) => {
+                info!("{asgi_event}");
                 send_to_app.send(asgi_event).await?;
             }
             WebsocketState::Closing(asgi_event, frame) => {
+                info!("{asgi_event}");
                 send_to_app.send(asgi_event).await?;
                 let _ = ws.write_frame(frame).await;
             }
@@ -249,22 +248,6 @@ impl From<Frame<'_>> for WebsocketState<'_> {
 }
 
 /// State transitions when receiving an ASGI event from the application
-impl From<StdResult<ArasResult<ASGISendEvent>, Elapsed>> for WebsocketState<'_> {
-    fn from(value: StdResult<ArasResult<ASGISendEvent>, Elapsed>) -> Self {
-        match value {
-            Ok(msg) => Self::from(msg),
-            Err(_) => {
-                let frame = Frame::close(CloseCode::Error.into(), "Internal server error".as_bytes());
-                let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(
-                    CloseCode::Error.into(),
-                    format!("Timeout receiving ASGI message in websocket loop"),
-                );
-                Self::Closing(asgi_event, frame)
-            }
-        }
-    }
-}
-
 impl From<ArasResult<ASGISendEvent>> for WebsocketState<'_> {
     fn from(value: ArasResult<ASGISendEvent>) -> Self {
         match value {
@@ -513,7 +496,7 @@ mod tests {
             Ok(ASGISendEvent::new_websocket_send(None, Some("im the server".into()))),
             Ok(ASGISendEvent::new_websocket_close(1000, "goodbye".into())),
         ]);
-        let event_loop = WebsocketEventLoop::new(Duration::from_secs(5));
+        let event_loop = WebsocketEventLoop::new();
 
         let result = event_loop.run(ws, send_to.clone(), receive_from).await;
 
@@ -539,7 +522,7 @@ mod tests {
             Ok(ASGISendEvent::new_websocket_send(None, Some("I would very much like to be split up".into()))),
             Ok(ASGISendEvent::new_websocket_close(1000, "goodbye".into())),
         ]);
-        let event_loop = WebsocketEventLoop::new(Duration::from_secs(5));
+        let event_loop = WebsocketEventLoop::new();
 
         let result = event_loop.run(ws, send_to.clone(), receive_from).await;
 
@@ -555,7 +538,7 @@ mod tests {
         let send_to = SendToAppCollector::new();
         let receive_from = DeterministicReceiveFromApp::new(vec![]);
 
-        let event_loop = WebsocketEventLoop::new(Duration::from_secs(5));
+        let event_loop = WebsocketEventLoop::new();
 
         let result = event_loop.run(ws, send_to.clone(), receive_from).await;
         println!("{:?}", result);
@@ -569,7 +552,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_accept_websocket_connection() {
-        let handler = WebsocketHandler::new(std::time::Duration::from_secs(5), 1000);
+        let handler = WebsocketHandler::new(Duration::from_secs(5), 1000);
         let request = build_websocket_request();
 
         let send_to = SendToAppCollector::new();
@@ -590,7 +573,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_accept_websocket_connection_additional_headers() {
-        let handler = WebsocketHandler::new(std::time::Duration::from_secs(5), 1000);
+        let handler = WebsocketHandler::new(Duration::from_secs(5), 1000);
         let request = build_websocket_request();
 
         let send_to = SendToAppCollector::new();
@@ -611,7 +594,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_duplicate_headers() {
-        let handler = WebsocketHandler::new(std::time::Duration::from_secs(5), 1000);
+        let handler = WebsocketHandler::new(Duration::from_secs(5), 1000);
         let request = build_websocket_request();
 
         let send_to = SendToAppCollector::new();

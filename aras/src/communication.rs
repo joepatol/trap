@@ -150,7 +150,7 @@ impl<A: ASGIApplication + 'static> CommunicationFactory<A> {
                     return msg;
                 };
                 if is_ws_connection {
-                    ASGIReceiveEvent::new_websocket_disconnect(1000, "Client connection closed".to_string())
+                    ASGIReceiveEvent::new_websocket_disconnect(1005, String::new())
                 } else {
                     ASGIReceiveEvent::new_http_disconnect()
                 }
