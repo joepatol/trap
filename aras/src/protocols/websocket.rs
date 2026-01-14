@@ -531,6 +531,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_frames_split_when_exceeding_max_message_size() {
+        FRAME_BUILDER.get_or_init(|| FrameBuilder::new(10));
+        let (stream, ws) = build_websocket_client(None);
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_websocket_send(None, Some("I would very much like to be split up".into()))),
+            Ok(ASGISendEvent::new_websocket_close(1000, "goodbye".into())),
+        ]);
+        let event_loop = WebsocketEventLoop::new(Duration::from_secs(5));
+
+        let result = event_loop.run(ws, send_to.clone(), receive_from).await;
+
+        assert!(result.is_ok());
+
+        let written_to_stream = stream.written();
+        assert!(written_to_stream.len() == 5);
+    }
+
+    #[tokio::test]
     async fn test_client_messages_are_send_to_asgi_app() {
         let (_, ws) = build_websocket_client(Some(vec!["hello server", "im the client"]));
         let send_to = SendToAppCollector::new();
