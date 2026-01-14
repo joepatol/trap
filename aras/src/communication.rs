@@ -9,7 +9,7 @@ use log::error;
 use tokio::sync::oneshot::{self, Receiver as OneshotReceiver};
 use tokio::sync::{Mutex, RwLock};
 
-use crate::{ArasResult, ArasError};
+use crate::{ArasError, ArasResult};
 
 /// Handle to send ASGI messages to an application
 pub(crate) trait SendToASGIApp: Send + Sync {
@@ -131,6 +131,8 @@ impl<A: ASGIApplication + 'static> CommunicationFactory<A> {
         let (send_to_app, receive_from_server) = channel::bounded(CHANNEL_SIZE);
         let (result_producer, result_consumer) = oneshot::channel();
 
+        let is_ws_connection = scope.is_websocket();
+
         let send_closure = move |message: ASGISendEvent| -> SendFuture {
             let txc = send_to_server.clone();
             Box::new(Box::pin(async move {
@@ -144,9 +146,13 @@ impl<A: ASGIApplication + 'static> CommunicationFactory<A> {
         let receive_closure = move || -> ReceiveFuture {
             let rxc = receive_from_server.clone();
             Box::new(Box::pin(async move {
-                match rxc.recv().await {
-                    Ok(msg) => msg,
-                    Err(_) => ASGIReceiveEvent::new_http_disconnect(),
+                if let Ok(msg) = rxc.recv().await {
+                    return msg;
+                };
+                if is_ws_connection {
+                    ASGIReceiveEvent::new_websocket_disconnect(1000, "Client connection closed".to_string())
+                } else {
+                    ASGIReceiveEvent::new_http_disconnect()
                 }
             }))
         };

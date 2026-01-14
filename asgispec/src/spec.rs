@@ -53,6 +53,20 @@ pub enum Scope<S: State> {
     Websocket(WebsocketScope<S>),
 }
 
+impl<S: State> Scope<S> {
+    pub fn is_websocket(&self) -> bool {
+        matches!(self, Scope::Websocket(_))
+    }
+
+    pub fn is_http(&self) -> bool {
+        matches!(self, Scope::HTTP(_))
+    }
+
+    pub fn is_lifespan(&self) -> bool {
+        matches!(self, Scope::Lifespan(_))
+    }
+}
+
 impl<S: State> std::fmt::Display for Scope<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

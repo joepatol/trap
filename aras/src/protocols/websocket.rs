@@ -14,7 +14,7 @@ use http::StatusCode;
 use http_body_util::{BodyExt, Empty, Full};
 use hyper::body::Body;
 use hyper::Request;
-use log::error;
+use log::{error};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::time::error::Elapsed;
 
@@ -172,8 +172,8 @@ impl<'a> WebsocketState<'a> {
                 send_to_app.send(asgi_event).await?;
             }
             WebsocketState::Closing(asgi_event, frame) => {
-                ws.write_frame(frame).await?;
                 send_to_app.send(asgi_event).await?;
+                let _ = ws.write_frame(frame).await;
             }
             _ => {}
         };
