@@ -11,10 +11,12 @@ use tokio::sync::{Mutex, RwLock};
 
 use crate::{ArasResult, ArasError};
 
+/// Handle to send ASGI messages to an application
 pub(crate) trait SendToASGIApp: Send + Sync {
     fn send(&mut self, message: ASGIReceiveEvent) -> impl Future<Output = ArasResult<()>> + Send + Sync;
 }
 
+/// Handle to receive ASGI messages from an application
 pub(crate) trait ReceiveFromASGIApp: Send + Sync {
     fn receive(&mut self) -> impl Future<Output = ArasResult<ASGISendEvent>> + Send + Sync;
 }
@@ -76,6 +78,8 @@ impl ApplicationHandle {
     }
 }
 
+/// Receive handle to get ASGI messages from an application.
+/// Uses an async channel to receive messages from the application.
 #[derive(Constructor, Debug)]
 pub(crate) struct ReceiveFromApp {
     handle: ApplicationHandle,
@@ -92,6 +96,8 @@ impl ReceiveFromASGIApp for ReceiveFromApp {
     }
 }
 
+/// Send handle to send ASGI messages to an application.
+/// Uses an async channel to send messages to the application.
 #[derive(Constructor, Debug)]
 pub(crate) struct SendToApp {
     handle: ApplicationHandle,
@@ -112,7 +118,7 @@ const CHANNEL_SIZE: usize = 16;
 
 /// Factory to create communication channels between server and ASGI application.
 /// Provides a method to build 2 handles for sending and receiving ASGI messages to and from the
-/// application given an ASGI scope.
+/// application, given an ASGI scope.
 #[derive(Constructor, Clone)]
 pub(crate) struct CommunicationFactory<A: ASGIApplication> {
     application: A,

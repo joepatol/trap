@@ -60,7 +60,7 @@ impl WebsocketHandler {
         receive_from: &mut impl ReceiveFromASGIApp,
     ) -> ArasResult<WsConnectResponse> {
         send_to.send(ASGIReceiveEvent::new_websocket_connect()).await?;
-        receive_from.receive().await?.try_into()
+        tokio::time::timeout(self.timeout, receive_from.receive()).await??.try_into()
     }
 
     async fn run_protocol(
@@ -100,11 +100,9 @@ impl WebsocketEventLoop {
         mut receive_from_app: impl ReceiveFromASGIApp,
     ) -> ArasResult<()> {
         let mut executed_event;
-        let mut state = WebsocketState::Start;
+        let mut state = WebsocketState::Starting;
 
         while !matches!(state, WebsocketState::Closed) {
-            // TODO: when state execution fails we break and return an error.
-            // Should we send close messages to both client and ASGI app as well?
             executed_event = state.execute(&mut ws, &mut send_to_app).await?;
             state = self.next(executed_event, &mut ws, &mut receive_from_app).await;
         }
@@ -124,10 +122,6 @@ impl WebsocketEventLoop {
             return WebsocketState::Closed;
         }
 
-        if let ExecutedState::Closing = state {
-            return WebsocketState::Closed;
-        }
-
         tokio::select! {
             out = ws.read_frame() => WebsocketState::from(out),
             out = tokio::time::timeout(self.timeout, receive_from_app.receive()) => WebsocketState::from(out),
@@ -138,7 +132,7 @@ impl WebsocketEventLoop {
 /// States the websocket event loop can be in
 enum WebsocketState<'a> {
     // Starting state, wait for first event
-    Start,
+    Starting,
     // Got some frames from the app to send to the client
     SendFrames(VecDeque<Frame<'a>>),
     // Got frames from the client to send to the app
@@ -149,13 +143,12 @@ enum WebsocketState<'a> {
     Closed,
 }
 
-/// Each state corresponds to some work to be done
+/// Each state corresponds to some work to be done.
 /// This enum represents the states after the work was done
 enum ExecutedState {
-    Start,
-    SendFrames,
-    SendASGIEvent,
-    Closing,
+    Started,
+    FramesSend,
+    ASGIEventSend,
     Closed,
 }
 
@@ -193,10 +186,10 @@ impl<'a> WebsocketState<'a> {
 impl From<&WebsocketState<'_>> for ExecutedState {
     fn from(value: &WebsocketState<'_>) -> Self {
         match value {
-            WebsocketState::Start => ExecutedState::Start,
-            WebsocketState::SendFrames(_) => ExecutedState::SendFrames,
-            WebsocketState::SendASGIEvent(_) => ExecutedState::SendASGIEvent,
-            WebsocketState::Closing(_, _) => ExecutedState::Closing,
+            WebsocketState::Starting => ExecutedState::Started,
+            WebsocketState::SendFrames(_) => ExecutedState::FramesSend,
+            WebsocketState::SendASGIEvent(_) => ExecutedState::ASGIEventSend,
+            WebsocketState::Closing(_, _) => ExecutedState::Closed,
             WebsocketState::Closed => ExecutedState::Closed,
         }
     }
@@ -236,7 +229,6 @@ impl From<Frame<'_>> for WebsocketState<'_> {
                 let asgi_event = ASGIReceiveEvent::new_websocket_receive(bytes, None);
                 Self::SendASGIEvent(asgi_event)
             }
-            // TODO: split closing into ClientClosing and ServerClosing?
             OpCode::Close => {
                 let data = bytes.unwrap_or(Bytes::new());
                 let text = String::from_utf8_lossy(&data);
@@ -262,8 +254,7 @@ impl From<StdResult<ArasResult<ASGISendEvent>, Elapsed>> for WebsocketState<'_> 
         match value {
             Ok(msg) => Self::from(msg),
             Err(_) => {
-                let payload = Payload::Owned(String::from("Internal server error").into_bytes());
-                let frame = Frame::new(true, OpCode::Close, None, payload);
+                let frame = Frame::close(CloseCode::Error.into(), "Internal server error".as_bytes());
                 let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(
                     CloseCode::Error.into(),
                     format!("Timeout receiving ASGI message in websocket loop"),
@@ -279,8 +270,7 @@ impl From<ArasResult<ASGISendEvent>> for WebsocketState<'_> {
         match value {
             Ok(msg) => Self::from(msg),
             Err(e) => {
-                let payload = Payload::Owned(String::from("Internal server error").into_bytes());
-                let frame = Frame::new(true, OpCode::Close, None, payload);
+                let frame = Frame::close(CloseCode::Error.into(), "Internal server error".as_bytes());
                 let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(
                     CloseCode::Error.into(),
                     format!("Error receiving ASGI message in websocket loop: {e}"),
@@ -301,9 +291,12 @@ impl From<ASGISendEvent> for WebsocketState<'_> {
             }
             // TODO: Can reason be large than max frame size?
             ASGISendEvent::WebsocketClose(msg) => {
-                let payload = Payload::Owned(msg.reason.clone().into_bytes());
+                let payload = Payload::Owned(msg.reason.into_bytes());
                 let frame = Frame::new(true, OpCode::Close, None, payload);
-                let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(msg.code.into(), msg.reason);
+                let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(
+                    msg.code.into(),
+                    "Application send websocket.close".into(),
+                );
                 Self::Closing(asgi_event, frame)
             }
             event => {
@@ -311,7 +304,7 @@ impl From<ASGISendEvent> for WebsocketState<'_> {
                 let frame = Frame::new(true, OpCode::Close, None, payload);
                 let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(
                     CloseCode::Error.into(),
-                    format!("Received invalid ASGI message in websocket loop. Got: {event:?}"),
+                    format!("Received invalid ASGI message in websocket loop. \n {event}"),
                 );
                 Self::Closing(asgi_event, frame)
             }
@@ -474,7 +467,7 @@ fn merge_responses(app_response: Response, upgrade_response: http::Response<Empt
 
 #[cfg(test)]
 mod tests {
-    use super::{WebsocketHandler, WebsocketEventLoop, FrameBuilder};
+    use super::{FrameBuilder, WebsocketEventLoop, WebsocketHandler};
 
     use std::time::Duration;
     use std::vec;
