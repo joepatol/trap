@@ -13,9 +13,11 @@ def serve(
     keep_alive: bool = True,
     max_concurrency: int | None = None,
     max_size_kb: int = 1_000_000,
-    timeout_secs: int = 60,
+    request_timeout: int = 180,
     rate_limit: tuple[int, int] = (1000, 1),
     buffer_size: int = 1024,
+    backpressure_timeout: int = 60,
+    max_ws_frame_size: int = 64 * 1024,
 ) -> None:
     loop = asyncio.new_event_loop()
     token = generate_cancel_token()
@@ -34,8 +36,10 @@ def serve(
             log_level=log_level,
             max_concurrency=max_concurrency,
             max_size_kb=max_size_kb,
-            timeout_secs=timeout_secs,
+            request_timeout=request_timeout,
             rate_limit=rate_limit,
             buffer_size=buffer_size,
+            backpressure_timeout=backpressure_timeout,
+            max_ws_frame_size=max_ws_frame_size,
         )
     )

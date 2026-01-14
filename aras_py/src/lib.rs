@@ -51,9 +51,11 @@ fn generate_cancel_token() -> PyStopServerToken {
     keep_alive = true,
     max_concurrency = None,
     max_size_kb = 1000000,
-    timeout_secs = 60,
+    request_timeout = 180,
     rate_limit = (1000, 1),
     buffer_size = 1024,
+    backpressure_timeout = 60,
+    max_ws_frame_size = 64 * 1024,
 ))]
 /// Serves a Python ASGI application using the ARAS server.
 ///
@@ -67,8 +69,8 @@ fn generate_cancel_token() -> PyStopServerToken {
 /// What you probably want is to create a cancel token, run this function using `event_loop.run_until_complete`, and then when you want to stop the server call
 /// token.stop() from another thread or signal handler.
 ///
-/// The ARAS Python package will do this ceremony for the user when using `aras.serve`, hence we define `serve_python` as it's a lower level function not intended
-/// to be used directly by end users.
+/// The ARAS Python package will do this ceremony for the user when using `aras.serve` or the CLI. This lower level function is only required when the user requires
+/// more control over the event loop (e.g. use something other than asyncio, or integrate into an existing event loop), or over the cancellation.
 fn serve_python<'a>(
     py: Python<'a>,
     application: Py<PyAny>,
@@ -80,9 +82,11 @@ fn serve_python<'a>(
     keep_alive: bool,
     max_concurrency: Option<usize>,
     max_size_kb: usize,
-    timeout_secs: u64,
+    request_timeout: u64,
     rate_limit: (u64, u64),
     buffer_size: usize,
+    backpressure_timeout: u64,
+    max_ws_frame_size: usize,
 ) -> PyResult<Bound<'a, PyAny>> {
     tracing_subscriber::fmt()
         .with_max_level(get_log_level_filter(log_level))
@@ -91,18 +95,20 @@ fn serve_python<'a>(
     let state = PyState::new(PyDict::new(py).unbind());
     let cancel_token = token.get_cancel_token();
     let task_locals = pyo3_async_runtimes::TaskLocals::new(event_loop).copy_context(py)?;
-    let asgi_application = PyASGIAppWrapper::new(application, task_locals.clone_ref(py));
+    let asgi_application = PyASGIAppWrapper::new(application, task_locals.clone());
 
     let asgi_server = ArasServer::new(
+        cancel_token,
         addr.into(),
         port,
         keep_alive,
-        Duration::from_secs(timeout_secs),
+        Duration::from_secs(request_timeout),
         max_size_kb * 1000,
         max_concurrency.unwrap_or(Semaphore::MAX_PERMITS),
-        cancel_token,
         (rate_limit.0, Duration::from_secs(rate_limit.1)),
         buffer_size,
+        backpressure_timeout,
+        max_ws_frame_size,
     );
 
     pyo3_async_runtimes::tokio::future_into_py_with_locals(py, task_locals, async move {

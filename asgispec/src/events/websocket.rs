@@ -1,3 +1,5 @@
+use bytes::Bytes;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketConnectEvent;
 
@@ -47,13 +49,13 @@ impl std::fmt::Display for WebsocketAcceptEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketReceiveEvent {
-    pub bytes: Option<Vec<u8>>,
+    pub bytes: Option<Bytes>,
     pub text: Option<String>,
 }
 
 impl WebsocketReceiveEvent {
     pub fn new(
-        bytes: Option<Vec<u8>>,
+        bytes: Option<Bytes>,
         text: Option<String>,
     ) -> Self {
         Self { bytes, text }
@@ -79,13 +81,13 @@ impl std::fmt::Display for WebsocketReceiveEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketSendEvent {
-    pub bytes: Option<Vec<u8>>,
+    pub bytes: Option<Bytes>,
     pub text: Option<String>,
 }
 
 impl WebsocketSendEvent {
     pub fn new(
-        bytes: Option<Vec<u8>>,
+        bytes: Option<Bytes>,
         text: Option<String>,
     ) -> Self {
         Self { bytes, text }
@@ -111,18 +113,13 @@ impl std::fmt::Display for WebsocketSendEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketDisconnectEvent {
-    pub code: usize,
+    pub code: u16,
+    pub reason: String,
 }
 
 impl WebsocketDisconnectEvent {
-    pub fn new(code: usize) -> Self {
-        Self { code }
-    }
-}
-
-impl Default for WebsocketDisconnectEvent {
-    fn default() -> Self {
-        Self { code: 1005 }
+    pub fn new(code: u16, reason: String) -> Self {
+        Self { code, reason }
     }
 }
 
@@ -130,18 +127,19 @@ impl std::fmt::Display for WebsocketDisconnectEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "type: websocket.disconnect")?;
         writeln!(f, "code: {}", self.code)?;
+        writeln!(f, "reason: {}", self.reason)?;
         Ok(())
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebsocketCloseEvent {
-    pub code: usize,
+    pub code: u16,
     pub reason: String,
 }
 
 impl WebsocketCloseEvent {
-    pub fn new(code: Option<usize>, reason: String) -> Self {
+    pub fn new(code: Option<u16>, reason: String) -> Self {
         Self { code: code.unwrap_or(1000), reason }
     }
 }

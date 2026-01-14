@@ -1,32 +1,35 @@
-use asgispec::prelude::*;
-use asgispec::scope::LifespanScope;
-use derive_more::Constructor;
-use log::{error, info, debug};
+use std::sync::Arc;
+use std::time::Duration;
 
-use crate::application::{ApplicationWrapper, CalledApplication};
-use crate::error::{Error, Result, UnexpectedShutdownSrc as SRC};
+use asgispec::prelude::*;
+use derive_more::Constructor;
+use log::{debug, error, info};
+
+use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
+use crate::{ArasError, ArasResult};
 
 #[derive(Constructor)]
-pub(crate) struct LifespanHandler;
+pub(crate) struct LifespanHandler {
+    timeout: Duration,
+}
 
 impl LifespanHandler {
-    pub async fn startup<A>(self, application: A, state: A::State) -> Result<StartedLifespanHandler>
-    where
-        A: ASGIApplication + 'static,
-    {
+    pub async fn startup<S: SendToASGIApp, R: ReceiveFromASGIApp>(
+        self,
+        mut send_to_app: S,
+        mut receive_from_app: R,
+    ) -> ArasResult<StartedLifespanHandler<S, R>> {
         info!("Application starting");
 
-        let state_clone = state.clone();
-        let application = ApplicationWrapper::from(&application);
-        let mut called_app = application.call(Scope::Lifespan(LifespanScope::new(
-            ASGIScope::default(),
-            Some(state_clone),
-        )));
-
-        match startup_loop(&mut called_app).await {
+        match startup_loop(&mut send_to_app, &mut receive_from_app, self.timeout).await {
             Ok(use_lifespan) => {
                 info!("Application startup complete");
-                Ok(StartedLifespanHandler::new(called_app, use_lifespan))
+                Ok(StartedLifespanHandler::new(
+                    send_to_app,
+                    receive_from_app,
+                    use_lifespan,
+                    self.timeout,
+                ))
             }
             Err(e) => {
                 info!("Application startup failed");
@@ -36,21 +39,25 @@ impl LifespanHandler {
     }
 }
 
-#[derive(Constructor)]
-pub struct StartedLifespanHandler {
-    application: CalledApplication,
-    enabled: bool,
+#[derive(Constructor, Debug)]
+pub struct StartedLifespanHandler<S: SendToASGIApp, R: ReceiveFromASGIApp> {
+    send_to: S,
+    receive_from: R,
+    pub(crate) enabled: bool,
+    timeout: Duration,
 }
 
-impl StartedLifespanHandler {
-    pub async fn shutdown(self) -> Result<()> {
+impl<S: SendToASGIApp, R: ReceiveFromASGIApp> StartedLifespanHandler<S, R> {
+    pub async fn shutdown(&mut self) -> ArasResult<()> {
         info!("Application shutting down");
+
         if !self.enabled {
             info!("Lifespan protocol disabled...");
+            info!("Application shutdown complete");
             return Ok(());
         };
 
-        match shutdown_loop(self.application).await {
+        match shutdown_loop(&mut self.send_to, &mut self.receive_from, self.timeout).await {
             Ok(_) => {
                 info!("Application shutdown complete");
                 Ok(())
@@ -63,125 +70,260 @@ impl StartedLifespanHandler {
     }
 }
 
-async fn startup_loop(application: &mut CalledApplication) -> Result<bool> {
-    if let Err(e) = application.send_to(ASGIReceiveEvent::new_lifespan_startup()).await {
+async fn startup_loop(
+    send_to: &mut impl SendToASGIApp,
+    receive_from: &mut impl ReceiveFromASGIApp,
+    timeout: Duration,
+) -> ArasResult<bool> {
+    if let Err(e) = send_to.send(ASGIReceiveEvent::new_lifespan_startup()).await {
         debug!("Lifespan protocol appears unsupported: {e}");
-        return Ok(false)
+        return Ok(false);
     }
-    match application.receive_from().await {
-        Ok(ASGISendEvent::StartupComplete(_)) => Ok(true),
-        Ok(ASGISendEvent::StartupFailed(event)) => Err(Error::custom(event.message)),
+    match tokio::time::timeout(timeout, receive_from.receive()).await {
+        Ok(Ok(ASGISendEvent::StartupComplete(_))) => Ok(true),
+        Ok(Ok(ASGISendEvent::StartupFailed(event))) => Err(ArasError::custom(event.message)),
+        Ok(Ok(_)) => {
+            info!("Lifespan protocol appears unsupported (no lifespan event received)");
+            Ok(false)
+        }
         _ => {
-            debug!("Lifespan protocol appears unsupported");
+            info!("Lifespan protocol appears unsupported (error received)");
             Ok(false)
         }
     }
 }
 
-async fn shutdown_loop(mut application: CalledApplication) -> Result<()> {
-    application.send_to(ASGIReceiveEvent::new_lifespan_shutdown()).await?;
-    match application.receive_from().await {
+async fn shutdown_loop(
+    send_to: &mut impl SendToASGIApp,
+    receive_from: &mut impl ReceiveFromASGIApp,
+    timeout: Duration,
+) -> ArasResult<()> {
+    send_to.send(ASGIReceiveEvent::new_lifespan_shutdown()).await?;
+    match tokio::time::timeout(timeout, receive_from.receive()).await? {
         Ok(ASGISendEvent::ShutdownComplete(_)) => Ok(()),
-        Ok(ASGISendEvent::ShutdownFailed(event)) => Err(Error::custom(event.message)),
-        Ok(msg) => Err(Error::unexpected_asgi_message(Box::new(msg))),
-        Err(e) => Err(Error::unexpected_shutdown(
-            SRC::Application,
-            format!("{e}").into(),
-        )),
+        Ok(ASGISendEvent::ShutdownFailed(event)) => Err(ArasError::custom(event.message)),
+        Ok(msg) => Err(ArasError::unexpected_asgi_message(Arc::new(msg))),
+        Err(e) => Err(e),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use asgispec::prelude::*;
-    use asgispec::scope::LifespanScope;
-
-    use crate::applications::*;
-
-    use super::ApplicationWrapper;
+    use crate::ArasError;
     use super::{LifespanHandler, StartedLifespanHandler};
-    
-    pub fn build_lifespan_scope() -> Scope<MockState> {
-        Scope::Lifespan(LifespanScope::new(ASGIScope::default(), Some(MockState {})))
-    }
+    use crate::mocks::communication::{DeterministicReceiveFromApp, SendToAppCollector, SendToAppFail};
 
     #[tokio::test]
     async fn test_lifespan_startup() {
-        let handler = LifespanHandler::new();
-        let result = handler.startup(LifespanApp {}, MockState {}).await;
+        let handler = LifespanHandler::new(Duration::from_secs(5));
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_startup_complete()),
+        ]);
+
+        let result = handler.startup(send_to, receive_from).await;
         assert!(result.is_ok());
+        assert!(result.unwrap().enabled);
+    }
+
+    #[tokio::test]
+    async fn test_lifespan_startup_send() {
+        let handler = LifespanHandler::new(Duration::from_secs(5));
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_startup_complete()),
+        ]);
+
+        let _ = handler.startup(send_to.clone(), receive_from).await;
+        
+        let messages = send_to.get_messages().await;
+        
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0] == ASGIReceiveEvent::new_lifespan_startup());
+    }
+
+    #[tokio::test]
+    async fn test_lifespan_startup_fails() {
+        let handler = LifespanHandler::new(Duration::from_secs(5));
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_startup_failed("Startup failed".to_string())),
+        ]);
+
+        let result = handler.startup(send_to, receive_from).await;
+        assert!(result.is_err_and(|e| e.to_string() == "Startup failed"));
+    }
+
+    #[tokio::test]
+    async fn test_error_on_startup() {
+        let handler = LifespanHandler::new(Duration::from_secs(5));
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Err(ArasError::custom("Startup failed")),
+        ]);
+
+        let result = handler.startup(send_to, receive_from).await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().enabled == false);
+    }
+
+    #[tokio::test]
+    async fn test_error_when_sending_startup() {
+        let handler = LifespanHandler::new(Duration::from_secs(5));
+        let send_to = SendToAppFail::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_startup_complete()),
+        ]);
+
+        let result = handler.startup(send_to, receive_from).await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().enabled == false);
+    }
+
+    #[tokio::test]
+    async fn test_lifespan_not_supported_invalid_message() {
+        let handler = LifespanHandler::new(Duration::from_secs(5));
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_shutdown_complete()),
+        ]);
+
+        let result = handler.startup(send_to, receive_from).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().enabled == false);
+    }
+
+    #[tokio::test]
+    async fn test_lifespan_not_supported_timeout() {
+        let handler = LifespanHandler::new(Duration::from_millis(1));
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![]);
+
+        let result = handler.startup(send_to, receive_from).await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().enabled == false);
     }
 
     #[tokio::test]
     async fn test_lifespan_shutdown_ok_if_disabled() {
-        let app = LifespanApp {};
-        let running_app = ApplicationWrapper::from(&app)
-            .call(build_lifespan_scope());
-        let lifespan_handler = StartedLifespanHandler::new(running_app, false);
-        let result = lifespan_handler.shutdown().await;
+        let mut handler = StartedLifespanHandler::new(
+            SendToAppCollector::new(),
+            DeterministicReceiveFromApp::new(vec![]),
+            false,
+            Duration::from_secs(5),
+        );
+        let result = handler.shutdown().await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_lifespan_shutdown() {
-        let running_app = ApplicationWrapper::from(LifespanApp {})
-            .call(build_lifespan_scope());
-        let lifespan_handler = StartedLifespanHandler::new(running_app, true);
-        let result = lifespan_handler.shutdown().await;
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_shutdown_complete()),
+        ]);
+        let mut handler = StartedLifespanHandler::new(
+            send_to,
+            receive_from,
+            true,
+            Duration::from_secs(5),
+        );
+
+        let result = handler.shutdown().await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
-    async fn test_lifespan_disabled_if_protocol_unsupported() {
-        let handler = LifespanHandler::new();
-        let lifespan_handler = handler.startup(LifespanUnsupportedApp {}, MockState {}).await.unwrap();
-        assert!(lifespan_handler.enabled == false);
-    }
+    async fn test_lifespan_shutdown_send() {
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_shutdown_complete()),
+        ]);
+        let mut handler = StartedLifespanHandler::new(
+            send_to.clone(),
+            receive_from,
+            true,
+            Duration::from_secs(5),
+        );
 
-    #[tokio::test]
-    async fn test_error_on_startup() {
-        let handler = LifespanHandler::new();
-        let result = handler.startup(ErrorInLoopApp {}, MockState {}).await;
-        assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during startup"));
-    }
+        let _ = handler.shutdown().await;
 
-    #[tokio::test]
-    async fn test_startup_fails() {
-        let handler = LifespanHandler::new();
-        let result = handler.startup(LifespanFailedApp {}, MockState {}).await;
-        assert!(result.is_err_and(|e| e.to_string() == "test"));
-    }
-
-    #[tokio::test]
-    async fn test_app_fails_when_called() {
-        let handler = LifespanHandler::new();
-        let result = handler.startup(ErrorOnCallApp {}, MockState {}).await;
-        assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during startup"));
-    }
-
-    #[tokio::test]
-    async fn test_app_returns_early() {
-        let handler = LifespanHandler::new();
-        let result = handler.startup(ImmediateReturnApp {}, MockState {}).await;
-        assert!(result.is_err_and(|e| {
-            println!("{}", e.to_string());
-            true
-        }));
+        let messages = send_to.get_messages().await;
+        
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0] == ASGIReceiveEvent::new_lifespan_shutdown());
     }
 
     #[tokio::test]
     async fn test_shutdown_fails() {
-        let app = ApplicationWrapper::from(LifespanFailedApp {}).call(build_lifespan_scope());
-        let lifespan_handler = StartedLifespanHandler::new(app, true);
-        let result = lifespan_handler.shutdown().await;
-        assert!(result.is_err_and(|e| e.to_string() == "test"));
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_shutdown_failed("it failed".into())),
+        ]);
+        let mut handler = StartedLifespanHandler::new(
+            send_to,
+            receive_from,
+            true,
+            Duration::from_secs(5),
+        );
+
+        let result = handler.shutdown().await;
+        assert!(result.is_err_and(|e| e.to_string() == "it failed"));
     }
 
     #[tokio::test]
     async fn test_error_on_shutdown() {
-        let app = ApplicationWrapper::from(ErrorOnCallApp {}).call(build_lifespan_scope());
-        let lifespan_handler = StartedLifespanHandler::new(app, true);
-        let result = lifespan_handler.shutdown().await;
-        assert!(result.is_err_and(|e| e.to_string() == "Application shutdown unexpectedly. stopped during shutdown"));
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Err(ArasError::custom("error during shutdown")),
+        ]);
+        let mut handler = StartedLifespanHandler::new(
+            send_to,
+            receive_from,
+            true,
+            Duration::from_secs(5),
+        );
+
+        let result = handler.shutdown().await;
+        assert!(result.is_err_and(|e| e.to_string() == "error during shutdown"));
+    }
+
+    #[tokio::test]
+    async fn test_error_when_sending_shutdown() {
+        let send_to = SendToAppFail::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![
+            Ok(ASGISendEvent::new_shutdown_complete()),
+        ]);
+        let mut handler = StartedLifespanHandler::new(
+            send_to,
+            receive_from,
+            true,
+            Duration::from_secs(5),
+        );
+
+        let result = handler.shutdown().await;
+        assert!(result.is_err_and(|e| e.to_string() == "SendToAppFail always fails"));
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_timeout() {
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![]);
+        let mut handler = StartedLifespanHandler::new(
+            send_to,
+            receive_from,
+            true,
+            Duration::from_millis(1),
+        );
+
+        let result = handler.shutdown().await;
+
+        assert!(result.is_err_and(|e| e.to_string() == "ASGI await timeout elapsed"));
     }
 }

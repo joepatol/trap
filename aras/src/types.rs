@@ -9,7 +9,7 @@ use http::Request as HTTPRequest;
 use http::Response as HTTPResponse;
 use http_body_util::combinators::BoxBody;
 
-use crate::error::{Error, Result};
+use crate::{ArasError, ArasResult};
 
 /// Data structure containing information on the current connection
 #[derive(Clone, Debug)]
@@ -38,9 +38,9 @@ pub trait ResponseStatus {
 /// ARAS Request type
 pub type Request = HTTPRequest<Incoming>;
 /// ARAS Response type
-pub type Response = HTTPResponse<BoxBody<Bytes, Error>>;
+pub type Response = HTTPResponse<BoxBody<Bytes, ArasError>>;
 /// Future type for all services
-pub type ServiceFuture = Pin<Box<dyn Future<Output = Result<Response>> + Send>>;
+pub type ServiceFuture = Pin<Box<dyn Future<Output = ArasResult<Response>> + Send>>;
 
 impl<T> ResponseStatus for HTTPResponse<T> {
     fn status_string(&self) -> String {
