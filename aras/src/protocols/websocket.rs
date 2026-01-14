@@ -14,7 +14,7 @@ use http::StatusCode;
 use http_body_util::{BodyExt, Empty, Full};
 use hyper::body::Body;
 use hyper::Request;
-use log::{error, info};
+use log::error;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
@@ -59,7 +59,9 @@ impl WebsocketHandler {
         receive_from: &mut impl ReceiveFromASGIApp,
     ) -> ArasResult<WsConnectResponse> {
         send_to.send(ASGIReceiveEvent::new_websocket_connect()).await?;
-        tokio::time::timeout(self.timeout, receive_from.receive()).await??.try_into()
+        tokio::time::timeout(self.timeout, receive_from.receive())
+            .await??
+            .try_into()
     }
 
     async fn run_protocol(
@@ -166,11 +168,9 @@ impl<'a> WebsocketState<'a> {
                 }
             }
             WebsocketState::SendASGIEvent(asgi_event) => {
-                info!("{asgi_event}");
                 send_to_app.send(asgi_event).await?;
             }
             WebsocketState::Closing(asgi_event, frame) => {
-                info!("{asgi_event}");
                 send_to_app.send(asgi_event).await?;
                 let _ = ws.write_frame(frame).await;
             }
@@ -519,7 +519,10 @@ mod tests {
         let (stream, ws) = build_websocket_client(None);
         let send_to = SendToAppCollector::new();
         let receive_from = DeterministicReceiveFromApp::new(vec![
-            Ok(ASGISendEvent::new_websocket_send(None, Some("I would very much like to be split up".into()))),
+            Ok(ASGISendEvent::new_websocket_send(
+                None,
+                Some("I would very much like to be split up".into()),
+            )),
             Ok(ASGISendEvent::new_websocket_close(1000, "goodbye".into())),
         ]);
         let event_loop = WebsocketEventLoop::new();
