@@ -531,8 +531,10 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let written_to_stream = stream.written();
+        let written_to_stream = stream.written_unmasked().unwrap();
         assert!(written_to_stream.len() == 5);
+        assert!(written_to_stream[0] == "I would ve");
+        assert!(written_to_stream[3] == "plit up");
     }
 
     #[tokio::test]
