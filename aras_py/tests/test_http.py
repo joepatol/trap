@@ -140,3 +140,48 @@ async def test_upload_file(httpx_client: AsyncClient) -> None:
     
     assert response.status_code == 200
     assert response.json() == {"file_sizes": [26, 4]}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_streaming_response(httpx_client: AsyncClient) -> None:
+    response = await httpx_client.get("/api/stream/")
+
+    expected_content = b"".join([b"some fake video bytes" for _ in range(10)])
+
+    assert response.status_code == 200
+    assert response.content == expected_content
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_html_page(httpx_client: AsyncClient) -> None:
+    expected_response = """
+    <html>
+    <head>
+        <title>Item Details</title>
+        <link href="http://127.0.0.1:8080/static/styles.css" rel="stylesheet">
+    </head>
+    <body>
+        <h1><a href="http://127.0.0.1:8080/site/items/1">Item ID: 1</a></h1>
+        <span>Hello world</span>
+    </body>
+    </html>
+    """
+    
+    response = await httpx_client.get("/site/items/1")
+    
+    assert response.status_code == 200
+    assert (
+        response.text.replace("\n", "").replace(" ", "") == 
+        expected_response.replace("\n", "").replace(" ", "")
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_static_image(httpx_client: AsyncClient) -> None:
+    response = await httpx_client.get("/static/lightning.jpg")
+    
+    with open(ASSETS_FOLDER / "lightning.jpg", "rb") as f:
+        expected_content = f.read()
+    
+    assert response.status_code == 200
+    assert response.content == expected_content

@@ -12,7 +12,8 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "click >= 8.0.0"
+    "click >= 8.0.0",
+    "watchfiles >= 1.1.1",
 ]
 
 [project.scripts]
