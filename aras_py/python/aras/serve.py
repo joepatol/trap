@@ -1,13 +1,13 @@
+import os
 import asyncio
 import signal
 import logging
+from pathlib import Path
 from multiprocessing import Process
-
-import watchfiles
 
 from .aras import serve_python, generate_cancel_token  # type: ignore
 from .types import LogLevel, ASGIApplication
-from .supervisor import ReloadSupervisor
+from .supervisor import WatchFilesSupervisor
 
 logger = logging.getLogger("aras.serve")
 
@@ -133,15 +133,6 @@ def _run_hot_reload(
             },
         )
 
-    supervisor = ReloadSupervisor(_spawn_process)
-
-    location = application.__module__
-    print(f"Watching for changes in {location}")
-
-    for changes in watchfiles.watch(str(location), stop_event=supervisor.should_exit):
-        print("Changes detected: %s", changes)
-        print("Restarting server...")
-        try:
-            supervisor.restart()
-        except Exception as e:
-            print("Error while restarting server: %s", e)
+    reload_dirs = Path(os.path.abspath(application.__module__)).parent
+    WatchFilesSupervisor(_spawn_process, [reload_dirs]).run()
+ 

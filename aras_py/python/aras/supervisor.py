@@ -1,3 +1,8 @@
+"""
+Courtesy of uvicorn's implementation under the Apache 2.0 License.
+https://github.com/Kludex/uvicorn/tree/main/uvicorn/supervisors
+"""
+
 from __future__ import annotations
 
 import logging
@@ -11,6 +16,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import FrameType
 
+from watchfiles import watch
 import click
 
 HANDLED_SIGNALS = (
@@ -57,7 +63,7 @@ class ReloadSupervisor:
         self.shutdown()
 
     def pause(self) -> None:
-        if self.should_exit.wait(self.config.reload_delay):
+        if self.should_exit.wait(1):
             raise StopIteration()
 
     def __iter__(self) -> Iterator[list[Path] | None]:
@@ -103,9 +109,6 @@ class ReloadSupervisor:
             self.process.terminate()  # pragma: py-win32
         self.process.join()
 
-        for sock in self.sockets:
-            sock.close()
-
         message = f"Stopping reloader process [{str(self.pid)}]"
         color_message = "Stopping reloader process [{}]".format(click.style(str(self.pid), fg="cyan", bold=True))
         logger.info(message, extra={"color_message": color_message})
@@ -119,3 +122,31 @@ def _display_path(path: Path) -> str:
         return f"'{path.relative_to(Path.cwd())}'"
     except ValueError:
         return f"'{path}'"
+
+
+class WatchFilesSupervisor(ReloadSupervisor):
+    def __init__(
+        self,
+        spawn_process: BuildProcess,
+        reload_dirs: list[Path] | None = None,
+    ) -> None:
+        super().__init__(spawn_process)
+        self.reloader_name = "WatchFiles"
+        self.reload_dirs = reload_dirs
+
+        self.watcher = watch(
+            *self.reload_dirs,
+            watch_filter=None,
+            stop_event=self.should_exit,
+            # using yield_on_timeout here mostly to make sure tests don't
+            # hang forever, won't affect the class's behavior
+            yield_on_timeout=True,
+        )
+
+    def should_restart(self) -> list[Path] | None:
+        self.pause()
+
+        changes = next(self.watcher)
+        if changes:
+            return changes
+        return None

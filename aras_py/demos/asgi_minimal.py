@@ -75,6 +75,5 @@ async def asgi_application(scope: Scope, receive: Receive, send: Send):
     else:
         raise RuntimeError("Unsupported scope type")
 
-
 if __name__ == "__main__":
-    serve(asgi_application, backpressure_timeout=5)
+    serve(asgi_application, backpressure_timeout=5, reload=True)
