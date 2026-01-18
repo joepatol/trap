@@ -235,12 +235,12 @@ impl PyReceive {
 }
 
 #[derive(Clone, Debug)]
-pub struct PyASGIAppWrapper {
+pub struct InProcessASGIApp {
     py_application: Arc<Py<PyAny>>,
     task_locals: Arc<pyo3_async_runtimes::TaskLocals>,
 }
 
-impl PyASGIAppWrapper {
+impl InProcessASGIApp {
     pub fn new(py_application: Py<PyAny>, task_locals: pyo3_async_runtimes::TaskLocals) -> Self {
         Self {
             py_application: Arc::new(py_application),
@@ -249,7 +249,7 @@ impl PyASGIAppWrapper {
     }
 }
 
-impl ASGIApplication for PyASGIAppWrapper {
+impl ASGIApplication for InProcessASGIApp {
     type State = PyState;
     type Error = ArasError;
 

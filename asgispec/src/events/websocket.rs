@@ -1,6 +1,8 @@
 use bytes::Bytes;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebsocketConnectEvent;
 
 impl WebsocketConnectEvent {
@@ -16,7 +18,7 @@ impl std::fmt::Display for WebsocketConnectEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebsocketAcceptEvent {
     pub subprotocol: Option<String>,
     pub headers: Vec<(Vec<u8>, Vec<u8>)>,
@@ -47,7 +49,7 @@ impl std::fmt::Display for WebsocketAcceptEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebsocketReceiveEvent {
     pub bytes: Option<Bytes>,
     pub text: Option<String>,
@@ -79,7 +81,7 @@ impl std::fmt::Display for WebsocketReceiveEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebsocketSendEvent {
     pub bytes: Option<Bytes>,
     pub text: Option<String>,
@@ -111,7 +113,7 @@ impl std::fmt::Display for WebsocketSendEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebsocketDisconnectEvent {
     pub code: u16,
     pub reason: String,
@@ -132,7 +134,7 @@ impl std::fmt::Display for WebsocketDisconnectEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebsocketCloseEvent {
     pub code: u16,
     pub reason: String,

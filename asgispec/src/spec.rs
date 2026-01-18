@@ -4,6 +4,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 use bytes::Bytes;
+use serde::{Serialize, Deserialize};
 
 use crate::events::*;
 use crate::scope::*;
@@ -30,6 +31,8 @@ pub type ReceiveFn = Arc<dyn Fn() -> ReceiveFuture + Send + Sync>;
 
 pub trait State: Clone + Send + Sync + Display {}
 
+impl State for String {}
+
 pub trait ASGIApplication: Send + Clone {
     type State: State;
     type Error: Error;
@@ -46,10 +49,14 @@ pub trait ASGIServer<A: ASGIApplication> {
     fn run(&self, application: A, state: A::State) -> impl Future<Output = Self::Output>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum Scope<S: State> {
+    #[serde(rename = "http")]
     HTTP(HTTPScope<S>),
+    #[serde(rename = "lifespan")]
     Lifespan(LifespanScope<S>),
+    #[serde(rename = "websocket")]
     Websocket(WebsocketScope<S>),
 }
 
@@ -95,7 +102,7 @@ impl<S: State> From<LifespanScope<S>> for Scope<S> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ASGIScope {
     pub version: String,
     pub spec_version: String,
@@ -124,27 +131,45 @@ impl std::fmt::Display for ASGIScope {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum ASGISendEvent {
+    #[serde(rename = "lifespan.startup.complete")]
     StartupComplete(LifespanStartupCompleteEvent),
+    #[serde(rename = "lifespan.startup.failed")]
     StartupFailed(LifespanStartupFailedEvent),
+    #[serde(rename = "lifespan.shutdown.complete")]
     ShutdownComplete(LifespanShutdownCompleteEvent),
+    #[serde(rename = "lifespan.shutdown.failed")]
     ShutdownFailed(LifespanShutdownFailedEvent),
+    #[serde(rename = "http.response.start")]
     HTTPResponseStart(HTTPResponseStartEvent),
+    #[serde(rename = "http.response.body")]
     HTTPResponseBody(HTTPResponseBodyEvent),
+    #[serde(rename = "websocket.accept")]
     WebsocketAccept(WebsocketAcceptEvent),
+    #[serde(rename = "websocket.close")]
     WebsocketClose(WebsocketCloseEvent),
+    #[serde(rename = "websocket.send")]
     WebsocketSend(WebsocketSendEvent),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum ASGIReceiveEvent {
+    #[serde(rename = "lifespan.startup")]
     Startup(LifespanStartupEvent),
+    #[serde(rename = "lifespan.shutdown")]
     Shutdown(LifespanShutdownEvent),
+    #[serde(rename = "http.request")]
     HTTPRequest(HTTPRequestEvent),
+    #[serde(rename = "http.disconnect")]
     HTTPDisconnect(HTTPDisconnectEvent),
+    #[serde(rename = "websocket.connect")]
     WebsocketConnect(WebsocketConnectEvent),
+    #[serde(rename = "websocket.disconnect")]
     WebsocketDisconnect(WebsocketDisconnectEvent),
+    #[serde(rename = "websocket.receive")]
     WebsocketReceive(WebsocketReceiveEvent),
 }
 
@@ -243,5 +268,49 @@ impl std::fmt::Display for ASGIReceiveEvent {
             Self::WebsocketReceive(s) => write!(f, "{}", s),
             Self::WebsocketDisconnect(s) => write!(f, "{}", s),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests{
+    use super::*;
+
+    #[test]
+    fn test_lifespan_scope_serialize_ok() {
+        let scope = LifespanScope::<String>::new(
+            ASGIScope::default(), Some("state".to_string())
+        );
+        
+        let scope_enum = Scope::Lifespan(scope);
+        let serialized = serde_json::to_string(&scope_enum).unwrap();
+
+        let expected = r#"{"type":"lifespan","asgi":{"version":"3.0","spec_version":"2.5"},"state":"state"}"#;
+        assert!(serialized == expected);
+    }
+
+    #[test]
+    fn test_http_scope_serialize_ok() {
+        let scope = HTTPScope::<String>::new(
+            ASGIScope::default(),
+            "http".to_string(),
+            "GET".into(),
+            "http".into(),
+            "/".to_string(),
+            b"/".to_vec(),
+            vec![],
+            "".to_string(),
+            vec![
+                ("host".as_bytes().to_vec(), "localhost".as_bytes().to_vec())
+            ],
+            None,
+            None,
+            Some("state".to_string())
+        );
+        
+        let scope_enum = Scope::HTTP(scope);
+        let serialized = serde_json::to_string(&scope_enum).unwrap();
+
+        let expected = r#"{"type":"http","asgi":{"version":"3.0","spec_version":"2.5"},"http_version":"http","method":"GET","scheme":"http","path":"/","raw_path":[47],"query_string":[],"root_path":"","headers":[[[104,111,115,116],[108,111,99,97,108,104,111,115,116]]],"client":null,"server":null,"state":"state"}"#;
+        assert!(serialized == expected);
     }
 }

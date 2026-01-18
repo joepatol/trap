@@ -1,8 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 use crate::spec::{ASGIScope, State};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HTTPScope<S: State> {
-    pub type_: String,
     pub asgi: ASGIScope,
     pub http_version: String,
     pub method: String,
@@ -33,7 +34,6 @@ impl<S: State> HTTPScope<S> {
         state: Option<S>,
     ) -> Self {
         Self {
-            type_: String::from("http"),
             asgi,
             http_version,
             method,
@@ -52,7 +52,7 @@ impl<S: State> HTTPScope<S> {
 
 impl<S: State> std::fmt::Display for HTTPScope<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: {}", self.type_)?;
+        writeln!(f, "type: {}", "http")?;
         writeln!(f, "asgi: {}", self.asgi)?;
         writeln!(f, "http_version: {}", self.http_version)?;
         writeln!(f, "method: {}", self.method)?;

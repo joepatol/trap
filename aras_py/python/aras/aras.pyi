@@ -21,3 +21,8 @@ def serve_python(
     backpressure_timeout: int = 60,
     max_ws_frame_size: int = 64 * 1024,
 ) -> Awaitable[None]: ...
+
+def run_worker(
+    python_executable: str,
+    worker_script: str,
+) -> None: ...

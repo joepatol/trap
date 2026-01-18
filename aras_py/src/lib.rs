@@ -12,11 +12,11 @@ use pyo3_async_runtimes;
 use tokio::runtime::Handle;
 use tokio::sync::Semaphore;
 
-mod convert;
-mod wrappers;
+mod in_process;
+mod worker;
 
+use in_process::{InProcessASGIApp, PyState, PyStopServerToken};
 use tokio_util::sync::CancellationToken;
-use wrappers::{PyASGIAppWrapper, PyState, PyStopServerToken};
 
 fn get_log_level_filter(log_level: &str) -> tracing::Level {
     match log_level {
@@ -29,6 +29,24 @@ fn get_log_level_filter(log_level: &str) -> tracing::Level {
         _ => tracing::Level::INFO,
     }
 }
+
+// TODO:
+// Pass asgi app import string
+// #[pyfunction]
+// fn run_worker<'a>(
+//     python_executable: &str,
+//     worker_script: &str,
+// ) -> PyResult<()> {
+//     create_socket_dir();
+//     let worker = Worker::start(1, worker_script, python_executable);
+//     let rt = tokio::runtime::Runtime::new().unwrap();
+
+//     rt.block_on(async move {
+//         worker.send_lifespan_scope().await;
+//     });
+
+//     Ok(())
+// }
 
 #[pyfunction]
 #[pyo3(signature = ())]
@@ -95,7 +113,7 @@ fn serve_python<'a>(
     let state = PyState::new(PyDict::new(py).unbind());
     let cancel_token = token.get_cancel_token();
     let task_locals = pyo3_async_runtimes::TaskLocals::new(event_loop).copy_context(py)?;
-    let asgi_application = PyASGIAppWrapper::new(application, task_locals.clone());
+    let asgi_application = InProcessASGIApp::new(application, task_locals.clone());
 
     let asgi_server = ArasServer::new(
         cancel_token,
@@ -125,5 +143,6 @@ fn serve_python<'a>(
 fn aras(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(serve_python, m)?)?;
     m.add_function(wrap_pyfunction!(generate_cancel_token, m)?)?;
+    // m.add_function(wrap_pyfunction!(run_worker, m)?)?;
     Ok(())
 }

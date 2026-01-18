@@ -1,6 +1,8 @@
 use bytes::Bytes;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HTTPRequestEvent {
     pub body: Bytes,
     pub more_body: bool,
@@ -22,7 +24,7 @@ impl std::fmt::Display for HTTPRequestEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HTTPResponseStartEvent {
     pub status: u16,
     pub headers: Vec<(Vec<u8>, Vec<u8>)>,
@@ -51,7 +53,7 @@ impl std::fmt::Display for HTTPResponseStartEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HTTPResponseBodyEvent {
     pub body: Bytes,
     pub more_body: bool,
@@ -73,7 +75,7 @@ impl std::fmt::Display for HTTPResponseBodyEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HTTPDisconnectEvent;
 
 impl HTTPDisconnectEvent {

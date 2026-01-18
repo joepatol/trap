@@ -1,4 +1,6 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LifespanStartupEvent;
 
 impl LifespanStartupEvent {
@@ -14,7 +16,7 @@ impl std::fmt::Display for LifespanStartupEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LifespanStartupCompleteEvent;
 
 impl LifespanStartupCompleteEvent {
@@ -30,7 +32,7 @@ impl std::fmt::Display for LifespanStartupCompleteEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LifespanStartupFailedEvent {
     pub message: String,
 }
@@ -51,7 +53,7 @@ impl std::fmt::Display for LifespanStartupFailedEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LifespanShutdownEvent;
 
 impl LifespanShutdownEvent {
@@ -67,7 +69,7 @@ impl std::fmt::Display for LifespanShutdownEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LifespanShutdownCompleteEvent;
 
 impl LifespanShutdownCompleteEvent {
@@ -83,7 +85,7 @@ impl std::fmt::Display for LifespanShutdownCompleteEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LifespanShutdownFailedEvent {
     pub message: String,
 }
