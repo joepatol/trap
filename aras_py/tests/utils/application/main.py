@@ -5,15 +5,15 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from fastapi.responses import Response, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from . import db_models
-from .database import engine
+import db_models
+from database import engine
 
-from . import basic
-from . import ws
-from . import files
-from . import notes
-from . import templates
-from . import stream
+import basic
+import ws
+import files
+import notes
+import templates
+import stream
 
 HERE = Path(os.path.dirname(os.path.abspath(__file__)))
 

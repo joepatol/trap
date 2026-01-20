@@ -21,13 +21,13 @@ impl std::fmt::Display for WebsocketConnectEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebsocketAcceptEvent {
     pub subprotocol: Option<String>,
-    pub headers: Vec<(Vec<u8>, Vec<u8>)>,
+    pub headers: Vec<(Bytes, Bytes)>,
 }
 
 impl WebsocketAcceptEvent {
     pub fn new(
         subprotocol: Option<String>,
-        headers: Vec<(Vec<u8>, Vec<u8>)>,
+        headers: Vec<(Bytes, Bytes)>,
     ) -> Self {
         Self { subprotocol, headers }
     }

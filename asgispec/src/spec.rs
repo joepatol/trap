@@ -190,7 +190,7 @@ impl ASGISendEvent {
         Self::ShutdownFailed(LifespanShutdownFailedEvent::new(message))
     }
 
-    pub fn new_http_response_start(status: u16, headers: Vec<(Vec<u8>, Vec<u8>)>) -> Self {
+    pub fn new_http_response_start(status: u16, headers: Vec<(Bytes, Bytes)>) -> Self {
         Self::HTTPResponseStart(HTTPResponseStartEvent::new(status, headers))
     }
 
@@ -198,7 +198,7 @@ impl ASGISendEvent {
         Self::HTTPResponseBody(HTTPResponseBodyEvent::new(data, more_body))
     }
 
-    pub fn new_websocket_accept(subprotocol: Option<String>, headers: Vec<(Vec<u8>, Vec<u8>)>) -> Self {
+    pub fn new_websocket_accept(subprotocol: Option<String>, headers: Vec<(Bytes, Bytes)>) -> Self {
         Self::WebsocketAccept(WebsocketAcceptEvent::new(subprotocol, headers))
     }
 

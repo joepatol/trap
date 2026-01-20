@@ -100,7 +100,7 @@ impl HTTPHandler {
         let mut builder = hyper::Response::builder();
         builder = builder.status(response_start_event.status);
         for (bytes_key, bytes_value) in response_start_event.headers.into_iter() {
-            builder = builder.header(bytes_key, bytes_value);
+            builder = builder.header(bytes_key.to_vec(), bytes_value.to_vec());
         }
         let body = BoxBody::new(StreamBody::new(body_stream));
         Ok(builder.body(body)?)
@@ -235,6 +235,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_headers_ok() {
+        let header_key_1 = Bytes::from("test");
+        let header_value_1 = Bytes::from("header");
+        let header_key_2 = Bytes::from("another");
+        let header_value_2 = Bytes::from("header");
+
         let handler = HTTPHandler::new(Duration::from_secs(10));
         let request = build_request("");
         let send_to = SendToAppCollector::new();
@@ -242,14 +247,8 @@ mod tests {
             Ok(ASGISendEvent::new_http_response_start(
                 200,
                 vec![
-                    (
-                        String::from("test").as_bytes().to_vec(),
-                        String::from("header").as_bytes().to_vec(),
-                    ),
-                    (
-                        String::from("another").as_bytes().to_vec(),
-                        String::from("header").as_bytes().to_vec(),
-                    ),
+                    (header_key_1, header_value_1),
+                    (header_key_2, header_value_2),
                 ],
             )),
             Ok(ASGISendEvent::new_http_response_body(Bytes::from(""), false)),

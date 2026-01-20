@@ -1,12 +1,12 @@
 use std::fs;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use aras_core::ArasError;
 use asgispec::prelude::*;
 
+use super::{Worker, spawn_worker};
 use super::SOCKET_PATH;
-use super::Worker;
 
 pub(crate) fn create_socket_dir() {
     fs::create_dir_all(SOCKET_PATH).expect("Failed to create socket dir");
@@ -18,14 +18,16 @@ pub(crate) struct WorkerPool {
 }
 
 impl WorkerPool {
-    pub fn initialize(num_workers: usize, worker_script: &str, python: &str, app: &str) -> Self {
+    pub fn initialize(num_workers: usize, worker_script: &str, python: &str, app: &str, pythonpath: &str) -> Self {
         create_socket_dir();
         let mut workers = Vec::with_capacity(num_workers);
         for id in 0..num_workers {
-            let worker = Worker::start(id, worker_script, python, app);
+            let worker = spawn_worker(id, worker_script, python, app, pythonpath);
             workers.push(worker);
         }
-        Self { workers: Arc::new(workers) }
+        Self {
+            workers: Arc::new(workers),
+        }
     }
 
     fn select_worker(&self) -> &Worker {
@@ -40,12 +42,7 @@ impl ASGIApplication for WorkerPool {
     type Error = ArasError;
     type State = String;
 
-    async fn call(
-        &self,
-        scope: Scope<Self::State>,
-        receive: ReceiveFn,
-        send: SendFn,
-    ) -> Result<(), Self::Error> {
+    async fn call(&self, scope: Scope<Self::State>, receive: ReceiveFn, send: SendFn) -> Result<(), Self::Error> {
         let worker = self.select_worker();
         worker.call(scope, receive, send).await.unwrap();
         Ok(())

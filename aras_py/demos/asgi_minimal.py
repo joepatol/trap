@@ -1,5 +1,6 @@
+from pathlib import Path
 from pprint import pprint
-from aras import serve
+from aras import serve_experimental
 from aras.types import Scope, Receive, Send
 
 
@@ -76,4 +77,4 @@ async def asgi_application(scope: Scope, receive: Receive, send: Send):
         raise RuntimeError("Unsupported scope type")
 
 if __name__ == "__main__":
-    serve(asgi_application, backpressure_timeout=5, reload=True)
+    serve_experimental("aras_py.demos.asgi_minimal:asgi_application", backpressure_timeout=5)

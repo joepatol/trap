@@ -1,8 +1,61 @@
+import sys
+import os
 import asyncio
 import signal
+from pathlib import Path
 
-from .aras import serve_python, generate_cancel_token  # type: ignore
+from .aras import serve_in_process, serve_with_workers, generate_cancel_token  # type: ignore
 from .types import LogLevel, ASGIApplication
+
+
+def serve_experimental(
+    application: str,
+    application_path: str,
+    host: str = "127.0.0.1",
+    port: int = 8080,
+    log_level: LogLevel = "INFO",
+    keep_alive: bool = True,
+    max_concurrency: int | None = None,
+    max_size_kb: int = 1_000_000,
+    request_timeout: int = 180,
+    rate_limit: tuple[int, int] = (1000, 1),
+    buffer_size: int = 1024,
+    backpressure_timeout: int = 60,
+    max_ws_frame_size: int = 64 * 1024,
+    reload: bool = False,
+) -> None:
+    if reload:
+        raise NotImplementedError("Auto-reload is not fully implemented yet.")
+    
+    root = Path(application_path).resolve()
+    cur_python_path = os.environ.get("PYTHONPATH", "")
+    if cur_python_path:
+        pythonpath = f"{cur_python_path}:{root.parent}:{root.parent.parent}"
+    else:
+        pythonpath = f"{root.parent}:{root.parent.parent}"
+
+    token = generate_cancel_token()
+    cur_dir = Path(__file__).parent
+    worker_script = cur_dir / "worker" / "worker.py"
+
+    serve_with_workers(
+        sys.executable,
+        pythonpath,
+        str(worker_script),
+        application,
+        token,
+        addr=[int(i) for i in host.split(".")],
+        port=port,
+        keep_alive=keep_alive,
+        log_level=log_level,
+        max_concurrency=max_concurrency,
+        max_size_kb=max_size_kb,
+        request_timeout=request_timeout,
+        rate_limit=rate_limit,
+        buffer_size=buffer_size,
+        backpressure_timeout=backpressure_timeout,
+        max_ws_frame_size=max_ws_frame_size,
+    )
 
 
 def serve(
@@ -30,7 +83,7 @@ def serve(
     loop.add_signal_handler(signal.SIGTERM, token.stop)
     
     loop.run_until_complete(
-        serve_python(
+        serve_in_process(
             application,
             token,
             loop,

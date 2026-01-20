@@ -341,7 +341,7 @@ impl TryFrom<WebsocketAcceptEvent> for WsConnectResponse {
             builder = builder.header(hyper::header::SEC_WEBSOCKET_PROTOCOL, value.subprotocol.unwrap())
         };
         for (bytes_key, bytes_value) in value.headers.into_iter() {
-            builder = builder.header(bytes_key, bytes_value);
+            builder = builder.header(bytes_key.to_vec(), bytes_value.to_vec());
         }
         Ok(Self::Accept(builder.body(body)?))
     }
@@ -456,6 +456,7 @@ mod tests {
     use std::vec;
 
     use asgispec::prelude::*;
+    use bytes::Bytes;
     use fastwebsockets::{FragmentCollector, Role, WebSocket};
     use http::Request;
 
@@ -584,7 +585,7 @@ mod tests {
         let send_to = SendToAppCollector::new();
         let receive_from = DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(
             None,
-            vec![(b"X-Custom-Header".to_vec(), b"CustomValue".to_vec())],
+            vec![(Bytes::from("X-Custom-Header"), Bytes::from("CustomValue"))],
         ))]);
 
         let response = handler.handle(send_to, receive_from, request).await;
@@ -605,7 +606,7 @@ mod tests {
         let send_to = SendToAppCollector::new();
         let receive_from = DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(
             None,
-            vec![(b"sec-websocket-accept".to_vec(), b"CustomValue".to_vec())],
+            vec![(Bytes::from("sec-websocket-accept"), Bytes::from("CustomValue"))],
         ))]);
 
         let response = handler.handle(send_to, receive_from, request).await;

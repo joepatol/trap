@@ -15,7 +15,12 @@ pub fn parse_py_http_response_start(py_map: &Bound<PyMapping>) -> PyResult<ASGIS
         .get_item("headers")
         .and_then(|v| v.extract::<Vec<(Vec<u8>, Vec<u8>)>>())
         .unwrap_or(Vec::new());
-    Ok(ASGISendEvent::new_http_response_start(status, headers))
+
+    let header_bytes = headers.into_iter().map(|(k, v)|{
+        (Bytes::from(k), Bytes::from(v))
+    });
+    
+    Ok(ASGISendEvent::new_http_response_start(status, header_bytes.collect()))
 }
 
 pub fn parse_py_http_response_body(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEvent> {
@@ -124,7 +129,12 @@ pub fn parse_websocket_accept(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEve
         .get_item("headers")
         .and_then(|v| v.extract::<Vec<(Vec<u8>, Vec<u8>)>>())
         .unwrap_or(Vec::new());
-    Ok(ASGISendEvent::new_websocket_accept(subprotocol, headers))
+
+    let header_bytes = headers.into_iter().map(|(k, v)|{
+        (Bytes::from(k), Bytes::from(v))
+    });
+
+    Ok(ASGISendEvent::new_websocket_accept(subprotocol, header_bytes.collect()))
 }
 
 pub fn parse_websocket_send(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEvent> {

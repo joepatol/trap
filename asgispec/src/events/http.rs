@@ -2,9 +2,14 @@ use bytes::Bytes;
 
 use serde::{Deserialize, Serialize};
 
+fn _default_false() -> bool {
+    false
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HTTPRequestEvent {
     pub body: Bytes,
+    #[serde(default = "_default_false")]
     pub more_body: bool,
 }
 
@@ -27,11 +32,11 @@ impl std::fmt::Display for HTTPRequestEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HTTPResponseStartEvent {
     pub status: u16,
-    pub headers: Vec<(Vec<u8>, Vec<u8>)>,
+    pub headers: Vec<(Bytes, Bytes)>,
 }
 
 impl HTTPResponseStartEvent {
-    pub fn new(status: u16, headers: Vec<(Vec<u8>, Vec<u8>)>) -> Self {
+    pub fn new(status: u16, headers: Vec<(Bytes, Bytes)>) -> Self {
         Self { status, headers }
     }
 }
@@ -56,6 +61,7 @@ impl std::fmt::Display for HTTPResponseStartEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HTTPResponseBodyEvent {
     pub body: Bytes,
+    #[serde(default = "_default_false")]
     pub more_body: bool,
 }
 

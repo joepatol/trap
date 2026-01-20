@@ -18,6 +18,8 @@ mod worker;
 use in_process::{InProcessASGIApp, PyState, PyStopServerToken};
 use tokio_util::sync::CancellationToken;
 
+use crate::worker::WorkerPool;
+
 fn get_log_level_filter(log_level: &str) -> tracing::Level {
     match log_level {
         "DEBUG" => tracing::Level::DEBUG,
@@ -30,23 +32,51 @@ fn get_log_level_filter(log_level: &str) -> tracing::Level {
     }
 }
 
-// TODO:
-// Pass asgi app import string
-// #[pyfunction]
-// fn run_worker<'a>(
-//     python_executable: &str,
-//     worker_script: &str,
-// ) -> PyResult<()> {
-//     create_socket_dir();
-//     let worker = Worker::start(1, worker_script, python_executable);
-//     let rt = tokio::runtime::Runtime::new().unwrap();
+#[pyfunction]
+fn serve_with_workers<'a>(
+    import_str: &str,
+    pythonpath: &str,
+    python_executable: &str,
+    worker_script: &str,
+    cancel_token: PyStopServerToken,
+    addr: [u8; 4],
+    port: u16,
+    log_level: &str,
+    keep_alive: bool,
+    max_concurrency: Option<usize>,
+    max_size_kb: usize,
+    request_timeout: u64,
+    rate_limit: (u64, u64),
+    buffer_size: usize,
+    backpressure_timeout: u64,
+    max_ws_frame_size: usize,
+) -> PyResult<()> {
+    tracing_subscriber::fmt()
+        .with_max_level(get_log_level_filter(log_level))
+        .init();
 
-//     rt.block_on(async move {
-//         worker.send_lifespan_scope().await;
-//     });
+    let pool = WorkerPool::initialize(2, worker_script, python_executable, import_str, pythonpath);
+    let asgi_server = ArasServer::new(
+        cancel_token.get_cancel_token(),
+        addr.into(),
+        port,
+        keep_alive,
+        Duration::from_secs(request_timeout),
+        max_size_kb * 1000,
+        max_concurrency.unwrap_or(Semaphore::MAX_PERMITS),
+        (rate_limit.0, Duration::from_secs(rate_limit.1)),
+        buffer_size,
+        backpressure_timeout,
+        max_ws_frame_size,
+    );
 
-//     Ok(())
-// }
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async move {
+        asgi_server.run(pool, String::new()).await.unwrap();
+    });
+
+    Ok(())
+}
 
 #[pyfunction]
 #[pyo3(signature = ())]
@@ -89,7 +119,7 @@ fn generate_cancel_token() -> PyStopServerToken {
 ///
 /// The ARAS Python package will do this ceremony for the user when using `aras.serve` or the CLI. This lower level function is only required when the user requires
 /// more control over the event loop (e.g. use something other than asyncio, or integrate into an existing event loop), or over the cancellation.
-fn serve_python<'a>(
+fn serve_in_process<'a>(
     py: Python<'a>,
     application: Py<PyAny>,
     token: PyStopServerToken,
@@ -141,8 +171,8 @@ fn serve_python<'a>(
 
 #[pymodule]
 fn aras(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(serve_python, m)?)?;
+    m.add_function(wrap_pyfunction!(serve_in_process, m)?)?;
+    m.add_function(wrap_pyfunction!(serve_with_workers, m)?)?;
     m.add_function(wrap_pyfunction!(generate_cancel_token, m)?)?;
-    // m.add_function(wrap_pyfunction!(run_worker, m)?)?;
     Ok(())
 }

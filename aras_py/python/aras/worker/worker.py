@@ -1,4 +1,6 @@
+import os
 import importlib
+import pkgutil
 import logging
 import msgpack
 import asyncio
@@ -10,7 +12,7 @@ from aras.types import Send, Receive, ASGIApplication
 """
 Message format over the unix socket:
 
-worker_id|length|data\n
+{'id': 1, 'length': 10}|{data} 
 """
 
 logger = logging.getLogger("aras.worker")
@@ -24,7 +26,7 @@ ARGS = [
 async def main() -> None:
     args = parse_args()
 
-    worker_id = args["id"]
+    worker_id = int(args["id"])
     
     app = import_asgi_app(args["app"])
     worker = Worker(worker_id, app)
@@ -39,7 +41,7 @@ async def main() -> None:
 
 
 class ParsedArgs(TypedDict):
-    id: str
+    id: int
     socket: str
     app: str
 
@@ -59,14 +61,22 @@ def parse_args() -> ParsedArgs:
     }
 
 
-def import_asgi_app(import_str: str) -> ASGIApplication:
-    module_path, app_name = import_str.rsplit(":", 1)
-    module = importlib.import_module(module_path)
+def import_asgi_app(import_str: str) -> None:
+    import_path, app_name = import_str.split(":")
+    module = importlib.import_module(import_path)
     return getattr(module, app_name)
+    
+
+def import_all_submodules(package_name: str):
+    for finder, modname, ispkg in pkgutil.walk_packages([package_name]):
+        if ispkg:
+            return import_all_submodules(modname)
+        else:
+            return importlib.import_module(modname)
 
 
 class Worker:
-    def __init__(self, worker_id: str, app: ASGIApplication) -> None:
+    def __init__(self, worker_id: int, app: ASGIApplication) -> None:
         self.worker_id = worker_id
         self.app = app
 
@@ -86,7 +96,7 @@ class Worker:
         recv_worker_id = int(worker_id_data.rstrip(b"|").decode())
 
         if self.worker_id != recv_worker_id:
-            raise RuntimeError(f"Worker {self.worker_id} received message meant for worker {recv_worker_id}")
+            raise RuntimeError(f"Python worker {self.worker_id} received message meant for worker {recv_worker_id}")
 
         length_data = await reader.readuntil(b"|")
         length = int(length_data.rstrip(b"|").decode())
@@ -101,7 +111,9 @@ class Worker:
     def build_send(self, writer: StreamWriter) -> Send:
         async def send(asgi_message: MutableMapping[str, Any]) -> None:
             data = msgpack.packb(asgi_message, use_bin_type=True)
-            message = f"{self.worker_id}|{len(data)}|".encode() + data + b"\n"
+            info_message = msgpack.packb({'worker_id': self.worker_id, 'length': len(data)}, use_bin_type=True)
+            message = info_message + b"|" + data
+            print(f"Python worker {self.worker_id} Sending message: ", message)
 
             writer.write(message)
             await writer.drain()
