@@ -44,7 +44,7 @@ impl ASGIApplication for WorkerPool {
 
     async fn call(&self, scope: Scope<Self::State>, receive: ReceiveFn, send: SendFn) -> Result<(), Self::Error> {
         let worker = self.select_worker();
-        worker.call(scope, receive, send).await.unwrap();
-        Ok(())
+        let result = worker.call(scope, receive, send).await.map_err(|e| ArasError::custom(e.to_string()));
+        result
     }
 }

@@ -33,6 +33,15 @@ fn get_log_level_filter(log_level: &str) -> tracing::Level {
 }
 
 #[pyfunction]
+#[pyo3(signature = ())]
+/// Get a new cancel token for stopping the server from Python.
+/// Exclusively useful for `aras.serve_python`
+fn generate_cancel_token() -> PyStopServerToken {
+    let token = CancellationToken::new();
+    PyStopServerToken::new(token)
+}
+
+#[pyfunction]
 fn serve_with_workers<'a>(
     import_str: &str,
     pythonpath: &str,
@@ -76,15 +85,6 @@ fn serve_with_workers<'a>(
     });
 
     Ok(())
-}
-
-#[pyfunction]
-#[pyo3(signature = ())]
-/// Get a new cancel token for stopping the server from Python.
-/// Exclusively useful for `aras.serve_python`
-fn generate_cancel_token() -> PyStopServerToken {
-    let token = CancellationToken::new();
-    PyStopServerToken::new(token)
 }
 
 #[pyfunction]

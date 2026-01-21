@@ -174,6 +174,29 @@ pub enum ASGIReceiveEvent {
 }
 
 impl ASGISendEvent {
+    pub fn variant_str(&self) -> &str {
+        match self {
+            Self::StartupComplete(_) => "lifespan.startup.complete",
+            Self::StartupFailed(_) => "lifespan.startup.failed",
+            Self::ShutdownComplete(_) => "lifespan.shutdown.complete",
+            Self::ShutdownFailed(_) => "lifespan.shutdown.failed",
+            Self::HTTPResponseStart(_) => "http.response.start",
+            Self::HTTPResponseBody(_) => "http.response.body",
+            Self::WebsocketAccept(_) => "websocket.accept",
+            Self::WebsocketClose(_) => "websocket.close",
+            Self::WebsocketSend(_) => "websocket.send",
+        }
+    }
+
+    // Determine if the event indicates the end of a connection or message sequence
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::ShutdownComplete(_) | Self::ShutdownFailed(_) | Self::WebsocketClose(_) => true,
+            Self::HTTPResponseBody(msg) if !msg.more_body => true,
+            _ => false,
+        }
+    }
+
     pub fn new_startup_complete() -> Self {
         Self::StartupComplete(LifespanStartupCompleteEvent::new())
     }
@@ -212,6 +235,26 @@ impl ASGISendEvent {
 }
 
 impl ASGIReceiveEvent {
+    pub fn variant_str(&self) -> &str {
+        match self {
+            Self::Startup(_) => "lifespan.startup",
+            Self::Shutdown(_) => "lifespan.shutdown",
+            Self::HTTPRequest(_) => "http.request",
+            Self::HTTPDisconnect(_) => "http.disconnect",
+            Self::WebsocketConnect(_) => "websocket.connect",
+            Self::WebsocketReceive(_) => "websocket.receive",
+            Self::WebsocketDisconnect(_) => "websocket.disconnect",
+        }
+    }
+
+    // Determine if the event indicates the end of a connection or message sequence
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::HTTPDisconnect(_) | Self::WebsocketDisconnect(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn new_lifespan_startup() -> Self {
         Self::Startup(LifespanStartupEvent::new())
     }
@@ -296,11 +339,11 @@ mod tests{
             "GET".into(),
             "http".into(),
             "/".to_string(),
-            b"/".to_vec(),
-            vec![],
+            Bytes::from("/"),
+            Bytes::new(),
             "".to_string(),
             vec![
-                ("host".as_bytes().to_vec(), "localhost".as_bytes().to_vec())
+                (Bytes::from("host"), Bytes::from("localhost"))
             ],
             None,
             None,

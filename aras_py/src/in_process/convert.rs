@@ -83,7 +83,7 @@ pub fn http_scope_into_py<'py>(py: Python<'py>, scope: HTTPScope<PyState>) -> Py
     let py_bytes_headers: Vec<(Bound<PyBytes>, Bound<PyBytes>)> = scope
         .headers
         .into_iter()
-        .map(|(k, v)| (PyBytes::new(py, k.as_slice()), PyBytes::new(py, v.as_slice())))
+        .map(|(k, v)| (PyBytes::new(py, k.iter().as_slice()), PyBytes::new(py, v.iter().as_slice())))
         .collect();
     python_result_dict.set_item("headers", py_bytes_headers.into_pyobject(py)?)?;
     let py_client = match scope.client {
@@ -203,7 +203,7 @@ pub fn websocket_scope_into_py<'py>(py: Python<'py>, scope: WebsocketScope<PySta
     let py_bytes_headers: Vec<(Bound<PyBytes>, Bound<PyBytes>)> = scope
         .headers
         .into_iter()
-        .map(|(k, v)| (PyBytes::new(py, k.as_slice()), PyBytes::new(py, v.as_slice())))
+        .map(|(k, v)| (PyBytes::new(py, k.iter().as_slice()), PyBytes::new(py, v.iter().as_slice())))
         .collect();
     python_result_dict.set_item("headers", py_bytes_headers.into_pyobject(py)?)?;
     let py_client = match scope.client {

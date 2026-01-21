@@ -93,7 +93,7 @@ impl HTTPHandler {
                     },
                     Ok(msg) => yield Err(ArasError::unexpected_asgi_message(Arc::new(msg))),
                     Err(e) => yield Err(e),
-                }
+                };
             }
         };
 
@@ -312,7 +312,6 @@ mod tests {
 
         let body = response.unwrap().into_body().collect().await;
         assert!(body.is_err_and(|e| {
-            println!("{}", e);
             e.to_string() == "Unexpected ASGI message received. ShutdownComplete(LifespanShutdownCompleteEvent)"
         }));
     }

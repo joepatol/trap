@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use bytes::Bytes;
 
 use crate::spec::{ASGIScope, State};
 
@@ -8,10 +9,10 @@ pub struct WebsocketScope<S: State> {
     pub http_version: String,
     pub scheme: String,
     pub path: String,
-    pub raw_path: Vec<u8>,
-    pub query_string: Vec<u8>,
+    pub raw_path: Bytes,
+    pub query_string: Bytes,
     pub root_path: String,
-    pub headers: Vec<(Vec<u8>, Vec<u8>)>,
+    pub headers: Vec<(Bytes, Bytes)>,
     pub client: Option<(String, u16)>,
     pub server: Option<(String, u16)>,
     pub subprotocols: Vec<String>,
@@ -24,10 +25,10 @@ impl<S: State> WebsocketScope<S> {
         http_version: String,
         scheme: String,
         path: String,
-        raw_path: Vec<u8>,
-        query_string: Vec<u8>,
+        raw_path: Bytes,
+        query_string: Bytes,
         root_path: String,
-        headers: Vec<(Vec<u8>, Vec<u8>)>,
+        headers: Vec<(Bytes, Bytes)>,
         client: Option<(String, u16)>,
         server: Option<(String, u16)>,
         subprotocols: Vec<String>,

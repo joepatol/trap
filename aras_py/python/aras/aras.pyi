@@ -24,10 +24,10 @@ def serve_in_process(
 
 
 def serve_with_workers(
-    python_executable: str,
+    import_str: str,
     pythonpath: str,
+    python_executable: str,
     worker_script: str,
-    asgi_app: str,
     token: CancelToken,
     addr: list[int] = [127, 0, 0, 1],
     port: int = 8080,

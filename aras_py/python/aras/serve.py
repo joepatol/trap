@@ -39,10 +39,10 @@ def serve_experimental(
     worker_script = cur_dir / "worker" / "worker.py"
 
     serve_with_workers(
-        sys.executable,
-        pythonpath,
-        str(worker_script),
         application,
+        pythonpath,
+        sys.executable,
+        str(worker_script),
         token,
         addr=[int(i) for i in host.split(".")],
         port=port,

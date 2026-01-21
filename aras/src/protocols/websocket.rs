@@ -547,7 +547,6 @@ mod tests {
         let event_loop = WebsocketEventLoop::new();
 
         let result = event_loop.run(ws, send_to.clone(), receive_from).await;
-        println!("{:?}", result);
         assert!(result.is_ok());
 
         let send_to_app = send_to.get_messages().await;

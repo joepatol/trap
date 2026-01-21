@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::path::Path;
 use std::process::{Child, Command};
 use std::result::Result;
@@ -6,58 +7,14 @@ use std::time::Duration;
 
 use log::info;
 use asgispec::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tokio::io::AsyncReadExt;
 use tokio::{
-    io::{AsyncWriteExt, BufReader, AsyncBufReadExt},
+    io::{AsyncWriteExt, BufReader},
     net::UnixStream,
 };
 
-use super::SOCKET_PATH;
-
-fn get_socket_path(worker_id: usize) -> String {
-    format!("{SOCKET_PATH}worker-{worker_id}.sock")
-}
-
-fn wait_for_socket(socket_path: &str) {
-    let path = Path::new(socket_path);
-    while !path.exists() {
-        std::thread::sleep(Duration::from_millis(10));
-    }
-}
-
-fn start_python_worker(
-    id: usize,
-    python: &str,
-    worker_script: &str,
-    socket_path: &str,
-    pythonpath: &str,
-    import_str: &str
-) -> Child {
-    Command::new(python)
-        .arg(worker_script)
-        .args(["--socket", socket_path, "--id", &id.to_string(), "--app", import_str])
-        .env("PYTHONPATH", pythonpath)
-        .spawn()
-        .expect(&format!("Failed to start Python worker {}", id))
-}
-
-enum Event {
-    ReceivedFromPython(Vec<u8>),
-    ReceivedFromASGI(ASGIReceiveEvent),
-}
-
-impl From<ASGIReceiveEvent> for Event {
-    fn from(data: ASGIReceiveEvent) -> Self {
-        Event::ReceivedFromASGI(data)
-    }
-}
-
-impl From<Vec<u8>> for Event {
-    fn from(data: Vec<u8>) -> Self {
-        Event::ReceivedFromPython(data)
-    }
-}
+use super::get_socket_path;
 
 pub(crate) fn spawn_worker(
     id: usize,
@@ -69,25 +26,50 @@ pub(crate) fn spawn_worker(
         info!("Starting worker {id}");
         let socket_path = get_socket_path(id);
         let _ = std::fs::remove_file(&socket_path);
-        let _python_worker = start_python_worker(id, python, worker_script, &socket_path, pythonpath, import_str);
-        wait_for_socket(&socket_path);
 
+        let _python_worker = Command::new(python)
+            .arg(worker_script)
+            .args(["--socket", &socket_path, "--id", &id.to_string(), "--app", import_str])
+            .env("PYTHONPATH", pythonpath)
+            .spawn()
+            .expect(&format!("Failed to start Python worker {}", id));
+        
+        wait_for_socket(&socket_path);
         let worker = Worker::new(id, socket_path, _python_worker);
+        
         info!("Worker {id} started");
         worker
 }
 
-#[derive(Serialize, Deserialize)]
-struct InfoMessage {
-    worker_id: usize,
-    length: usize,
+fn wait_for_socket(socket_path: &str) {
+    let path = Path::new(socket_path);
+    while !path.exists() {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+enum Event {
+    ReceivedFromPython(ASGISendEvent),
+    ReceivedFromASGI(ASGIReceiveEvent),
+}
+
+impl From<ASGIReceiveEvent> for Event {
+    fn from(data: ASGIReceiveEvent) -> Self {
+        Self::ReceivedFromASGI(data)
+    }
+}
+
+impl From<ASGISendEvent> for Event {
+    fn from(data: ASGISendEvent) -> Self {
+        Self::ReceivedFromPython(data)
+    }
 }
 
 pub(crate) struct Worker {
     pub task_count: AtomicUsize,
     pub id: usize,
     socket_path: String,
-    _python_worker: Child,
+    python_worker: Child,
 }
 
 impl Worker {
@@ -96,9 +78,24 @@ impl Worker {
             task_count: AtomicUsize::new(0),
             id,
             socket_path,
-            _python_worker: python_worker,
+            python_worker,
         }
     }
+
+    // pub fn stop(&mut self) {
+    //     println!("Stopping worker {}", self.id);
+    //     let _ = self.python_worker.kill().expect(&format!("Failed to stop worker {}", self.id));
+    //     println!("Worker {} stopped", self.id);
+    // }
+
+    // pub async fn watch(&self, func: impl FnOnce(Child)) {
+    //     let child = Arc::clone(&self.python_worker);
+    //     tokio::spawn(async move {
+    //         let status = child.wait().expect("Failed to wait on child process");
+    //         println!("Worker exited with status: {}", status);
+    //         func(child);
+    //     });
+    // }
 
     pub async fn call(
         &self,
@@ -109,27 +106,37 @@ impl Worker {
         self.task_count.fetch_add(1, Ordering::SeqCst);
 
         let mut stream = UnixStream::connect(&self.socket_path).await?;
-        let scope_message = rmp_serde::to_vec_named(&scope)?;
-        self.send_message_to_py(&mut stream, scope_message).await?;
+        self.send_message_to_py(&mut stream, scope).await?;
+
+        let mut asgi_disconnected = false;
+        let mut py_disconnected = false;
 
         loop {
-            let event = tokio::select! {
-                msg = receive() => Event::from(msg),
-                msg = self.receive_message_from_py(&mut stream) => Event::from(msg?)
+            if asgi_disconnected && py_disconnected {
+                break;
+            };
+
+            let event = if asgi_disconnected {
+                let msg = self.receive_message_from_py(&mut stream).await?;
+                Event::from(msg)
+            } else if py_disconnected {
+                let msg = receive().await;
+                Event::from(msg)
+            } else {
+                tokio::select! {
+                    msg = receive() => Event::from(msg),
+                    msg = self.receive_message_from_py(&mut stream) => Event::from(msg?)
+                }
             };
 
             match event {
-                Event::ReceivedFromASGI(asgi_event) => {
-                    let message = rmp_serde::to_vec_named(&asgi_event)?;
-                    self.send_message_to_py(&mut stream, message).await?;
+                Event::ReceivedFromASGI(message) => {
+                    asgi_disconnected = message.is_final();
+                    self.send_message_to_py(&mut stream, message).await?
                 }
-                Event::ReceivedFromPython(data) => {
-                    if &data == b"done" {
-                        break;
-                    }
-
-                    let parsed_msg: ASGISendEvent = rmp_serde::from_slice(&data)?;
-                    send(parsed_msg).await?;
+                Event::ReceivedFromPython(message) => {
+                    py_disconnected = message.is_final();
+                    send(message).await?;
                 }
             }
         }
@@ -138,33 +145,31 @@ impl Worker {
         Ok(())
     }
 
-    async fn receive_message_from_py(&self, stream: &mut UnixStream) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    async fn receive_message_from_py(&self, stream: &mut UnixStream) -> Result<ASGISendEvent, Box<dyn std::error::Error>> {
         let mut reader = BufReader::new(stream);
 
-        let mut info_buffer = Vec::new();
-        let size = reader.read_until(b'|', &mut info_buffer).await?;
-        let message: InfoMessage = rmp_serde::from_slice(&info_buffer[..size - 1])?;
+        let mut buf = [0u8; 4];
+        let _ = reader.read_exact(&mut buf).await?;
+        let length = u32::from_be_bytes(buf) as usize;
 
-        if message.worker_id != self.id {
-            panic!("Worker {} received message meant for worker {}", self.id, message.worker_id);
-        }
+        let mut data_buf = vec![0u8; length];
+        reader.read_exact(&mut data_buf).await?;
 
-        let mut data_buffer = vec![0u8; message.length];
-        reader.read_exact(&mut data_buffer).await?;
-
-        Ok(data_buffer)
+        Ok(rmp_serde::from_slice(&data_buf)?)
     }
 
     async fn send_message_to_py(
         &self,
         stream: &mut UnixStream,
-        message: Vec<u8>,
+        message: impl Serialize,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        stream
-            .write_all(format!("{}|{}|", self.id, message.len()).as_bytes())
-            .await?;
-        stream.write_all(&message).await?;
-        stream.write_all(b"\n").await?;
+        let data = rmp_serde::to_vec_named(&message)?;
+        let length = (data.len() as u32).to_be_bytes();
+
+        stream.write_all(&length).await?;
+        stream.write_all(&data).await?;
+        stream.flush().await?;
+
         Ok(())
     }
 }
