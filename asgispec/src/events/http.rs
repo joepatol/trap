@@ -1,5 +1,6 @@
 use bytes::Bytes;
 
+use crate::spec::ASGIDisplay;
 use serde::{Deserialize, Serialize};
 
 fn _default_false() -> bool {
@@ -21,11 +22,7 @@ impl HTTPRequestEvent {
 
 impl std::fmt::Display for HTTPRequestEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: http.request")?;
-        writeln!(f, "body:")?;
-        writeln!(f, "   {}", String::from_utf8_lossy(&self.body))?;
-        writeln!(f, "more_body: {}", self.more_body)?;
-        Ok(())
+        ASGIDisplay::from(self).fmt(f)
     }
 }
 
@@ -43,18 +40,7 @@ impl HTTPResponseStartEvent {
 
 impl std::fmt::Display for HTTPResponseStartEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: http.response.start")?;
-        writeln!(f, "status: {}", self.status)?;
-        writeln!(f, "headers:")?;
-        for (name, value) in &self.headers {
-            writeln!(
-                f,
-                "  {}: {}",
-                String::from_utf8_lossy(name),
-                String::from_utf8_lossy(value)
-            )?;
-        }
-        Ok(())
+        ASGIDisplay::from(self).fmt(f)
     }
 }
 
@@ -73,11 +59,7 @@ impl HTTPResponseBodyEvent {
 
 impl std::fmt::Display for HTTPResponseBodyEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: http.response.body")?;
-        writeln!(f, "body:")?;
-        writeln!(f, "   {}", String::from_utf8_lossy(&self.body))?;
-        writeln!(f, "more_body: {}", self.more_body)?;
-        Ok(())
+        ASGIDisplay::from(self).fmt(f)
     }
 }
 
@@ -92,7 +74,6 @@ impl HTTPDisconnectEvent {
 
 impl std::fmt::Display for HTTPDisconnectEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: http.disconnect")?;
-        Ok(())
+        ASGIDisplay::from(self).fmt(f)
     }
 }

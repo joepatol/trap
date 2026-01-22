@@ -1,3 +1,4 @@
+use crate::spec::ASGIDisplay;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -11,8 +12,7 @@ impl LifespanStartupEvent {
 
 impl std::fmt::Display for LifespanStartupEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: lifespan.startup")?;
-        Ok(())
+        ASGIDisplay::from(self).fmt(f)
     }
 }
 
@@ -27,8 +27,7 @@ impl LifespanStartupCompleteEvent {
 
 impl std::fmt::Display for LifespanStartupCompleteEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: lifespan.startup.complete")?;
-        Ok(())
+        ASGIDisplay::from(self).fmt(f)
     }
 }
 
@@ -47,9 +46,7 @@ impl LifespanStartupFailedEvent {
 
 impl std::fmt::Display for LifespanStartupFailedEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: lifespan.startup.failed")?;
-        writeln!(f, "message: {}", self.message)?;
-        Ok(())
+        ASGIDisplay::from(self).fmt(f)
     }
 }
 
@@ -64,8 +61,7 @@ impl LifespanShutdownEvent {
 
 impl std::fmt::Display for LifespanShutdownEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: lifespan.shutdown")?;
-        Ok(())
+        ASGIDisplay::from(self).fmt(f)
     }
 }
 
@@ -80,8 +76,7 @@ impl LifespanShutdownCompleteEvent {
 
 impl std::fmt::Display for LifespanShutdownCompleteEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: lifespan.shutdown.complete")?;
-        Ok(())
+        ASGIDisplay::from(self).fmt(f)
     }
 }
 
@@ -100,8 +95,6 @@ impl LifespanShutdownFailedEvent {
 
 impl std::fmt::Display for LifespanShutdownFailedEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: lifespan.shutdown.failed")?;
-        writeln!(f, "message: {}", self.message)?;
-        Ok(())
+        ASGIDisplay::from(self).fmt(f)
     }
 }

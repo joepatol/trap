@@ -1,10 +1,10 @@
-use std::sync::Arc;
 use std::path::Path;
 use std::process::{Child, Command};
 use std::result::Result;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use asgispec::scope::LifespanScope;
 use log::info;
 use asgispec::prelude::*;
 use serde::Serialize;
@@ -29,10 +29,13 @@ pub(crate) fn spawn_worker(
 
         let _python_worker = Command::new(python)
             .arg(worker_script)
-            .args(["--socket", &socket_path, "--id", &id.to_string(), "--app", import_str])
+            .args(["--socket", &socket_path, "--app", import_str])
             .env("PYTHONPATH", pythonpath)
             .spawn()
             .expect(&format!("Failed to start Python worker {}", id));
+
+        // Send worker to thread, thread restarts worker if it dies
+        // Send oneshot receiver to thread, when it completes, kill the worker process
         
         wait_for_socket(&socket_path);
         let worker = Worker::new(id, socket_path, _python_worker);
@@ -65,6 +68,7 @@ impl From<ASGISendEvent> for Event {
     }
 }
 
+// Should the whole thing be some kind of state machine?
 pub(crate) struct Worker {
     pub task_count: AtomicUsize,
     pub id: usize,
@@ -82,20 +86,29 @@ impl Worker {
         }
     }
 
-    // pub fn stop(&mut self) {
-    //     println!("Stopping worker {}", self.id);
-    //     let _ = self.python_worker.kill().expect(&format!("Failed to stop worker {}", self.id));
-    //     println!("Worker {} stopped", self.id);
-    // }
+    pub fn stop(&mut self) {
+        println!("Stopping worker {}", self.id);
 
-    // pub async fn watch(&self, func: impl FnOnce(Child)) {
-    //     let child = Arc::clone(&self.python_worker);
-    //     tokio::spawn(async move {
-    //         let status = child.wait().expect("Failed to wait on child process");
-    //         println!("Worker exited with status: {}", status);
-    //         func(child);
-    //     });
-    // }
+        let _ = self.python_worker.kill().expect(&format!("Failed to stop worker {}", self.id));
+        println!("Worker {} stopped", self.id);
+    }
+
+    pub async fn startup(&self, scope: LifespanScope<impl State + Serialize>) -> Result<ASGISendEvent, Box<dyn std::error::Error>> {
+        let mut stream = UnixStream::connect(&self.socket_path).await?;
+        self.send_message_to_py(&mut stream, scope).await?;
+        self.send_message_to_py(&mut stream, ASGIReceiveEvent::new_lifespan_startup()).await?;
+        let startup_result = self.receive_message_from_py(&mut stream).await?;
+        Ok(startup_result)
+    }
+
+    // TODO: shutdown should be done on the same connection as startup
+    // Should be something similar to lifespan handler?
+    pub async fn shutdown(&self) -> Result<ASGISendEvent, Box<dyn std::error::Error>> {
+        let mut stream = UnixStream::connect(&self.socket_path).await?;
+        self.send_message_to_py(&mut stream, ASGIReceiveEvent::new_lifespan_shutdown()).await?;
+        let shutdown_result = self.receive_message_from_py(&mut stream).await?;
+        Ok(shutdown_result)
+    }
 
     pub async fn call(
         &self,

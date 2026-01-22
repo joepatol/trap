@@ -3,6 +3,7 @@ use std::fmt::Display;
 use std::future::Future;
 use std::sync::Arc;
 
+use serde_json;
 use bytes::Bytes;
 use serde::{Serialize, Deserialize};
 
@@ -49,6 +50,21 @@ pub trait ASGIServer<A: ASGIApplication> {
     fn run(&self, application: A, state: A::State) -> impl Future<Output = Self::Output>;
 }
 
+pub struct ASGIDisplay<T: Serialize>(T);
+
+impl<T: Serialize> Display for ASGIDisplay<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = serde_json::to_string_pretty(&self.0).map_err(|_| std::fmt::Error)?;
+        write!(f, "{}", s)
+    }
+}
+
+impl<T: Serialize> From<T> for ASGIDisplay<T> {
+    fn from(value: T) -> Self {
+        Self(value)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Scope<S: State> {
@@ -74,13 +90,9 @@ impl<S: State> Scope<S> {
     }
 }
 
-impl<S: State> std::fmt::Display for Scope<S> {
+impl<S: State + Serialize> std::fmt::Display for Scope<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Scope::HTTP(s) => write!(f, "{}", s),
-            Scope::Websocket(s) => write!(f, "{}", s),
-            Scope::Lifespan(s) => write!(f, "{}", s),
-        }
+        ASGIDisplay::from(self).fmt(f)
     }
 }
 
@@ -125,9 +137,7 @@ impl Default for ASGIScope {
 
 impl std::fmt::Display for ASGIScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "version: {}", self.version)?;
-        writeln!(f, "spec version: {}", self.spec_version)?;
-        Ok(())
+        ASGIDisplay::from(self).fmt(f)
     }
 }
 
@@ -189,6 +199,7 @@ impl ASGISendEvent {
     }
 
     // Determine if the event indicates the end of a connection or message sequence
+    // After seeing this message, no futher messages should be expected.
     pub fn is_final(&self) -> bool {
         match self {
             Self::ShutdownComplete(_) | Self::ShutdownFailed(_) | Self::WebsocketClose(_) => true,
@@ -246,11 +257,12 @@ impl ASGIReceiveEvent {
             Self::WebsocketDisconnect(_) => "websocket.disconnect",
         }
     }
-
+    
     // Determine if the event indicates the end of a connection or message sequence
+    // After seeing this message, no futher messages should be expected.
     pub fn is_final(&self) -> bool {
         match self {
-            Self::HTTPDisconnect(_) | Self::WebsocketDisconnect(_) => true,
+            Self::HTTPDisconnect(_) | Self::WebsocketDisconnect(_) | Self::Shutdown(_) => true,
             _ => false,
         }
     }
@@ -286,31 +298,13 @@ impl ASGIReceiveEvent {
 
 impl std::fmt::Display for ASGISendEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::StartupComplete(s) => write!(f, "{}", s),
-            Self::StartupFailed(s) => write!(f, "{}", s),
-            Self::ShutdownComplete(s) => write!(f, "{}", s),
-            Self::ShutdownFailed(s) => write!(f, "{}", s),
-            Self::HTTPResponseStart(s) => write!(f, "{}", s),
-            Self::HTTPResponseBody(s) => write!(f, "{}", s),
-            Self::WebsocketAccept(s) => write!(f, "{}", s),
-            Self::WebsocketClose(s) => write!(f, "{}", s),
-            Self::WebsocketSend(s) => write!(f, "{}", s),
-        }
+        ASGIDisplay::from(self).fmt(f)
     }
 }
 
 impl std::fmt::Display for ASGIReceiveEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Startup(s) => write!(f, "{}", s),
-            Self::Shutdown(s) => write!(f, "{}", s),
-            Self::HTTPRequest(s) => write!(f, "{}", s),
-            Self::HTTPDisconnect(s) => write!(f, "{}", s),
-            Self::WebsocketConnect(s) => write!(f, "{}", s),
-            Self::WebsocketReceive(s) => write!(f, "{}", s),
-            Self::WebsocketDisconnect(s) => write!(f, "{}", s),
-        }
+        ASGIDisplay::from(self).fmt(f)
     }
 }
 

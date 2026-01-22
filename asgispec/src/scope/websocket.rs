@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use bytes::Bytes;
 
-use crate::spec::{ASGIScope, State};
+use crate::spec::{ASGIDisplay, ASGIScope, State};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebsocketScope<S: State> {
@@ -51,45 +51,8 @@ impl<S: State> WebsocketScope<S> {
     }
 }
 
-impl<S: State> std::fmt::Display for WebsocketScope<S> {
+impl<S: State + Serialize> std::fmt::Display for WebsocketScope<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: {}", "websocket")?;
-        writeln!(f, "asgi: {}", self.asgi)?;
-        writeln!(f, "http_version: {}", self.http_version)?;
-        writeln!(f, "scheme: {}", self.scheme)?;
-        writeln!(f, "path: {}", self.path)?;
-        writeln!(f, "raw_path: {}", String::from_utf8_lossy(&self.raw_path))?;
-        writeln!(f, "query_string: {}", String::from_utf8_lossy(&self.query_string))?;
-        writeln!(f, "root_path: {}", self.root_path)?;
-
-        writeln!(f, "headers:")?;
-        for (name, value) in &self.headers {
-            writeln!(f, "  {}: {}", String::from_utf8_lossy(name), String::from_utf8_lossy(value))?;
-        }
-
-        if let Some((ip, port)) = &self.client {
-            writeln!(f, "client: {}:{}", ip, port)?;
-        } else {
-            writeln!(f, "client: None")?;
-        }
-
-        if let Some((ip, port)) = &self.server {
-            writeln!(f, "server: {}:{}", ip, port)?;
-        } else {
-            writeln!(f, "server: None")?;
-        }
-
-        writeln!(f, "subprotocols:")?;
-        for subprotocol in self.subprotocols.iter() {
-            writeln!(f, "  {subprotocol}")?;
-        }
-
-        if self.state.is_some() {
-            writeln!(f, "state: {}", self.state.clone().unwrap())?;
-        } else {
-            writeln!(f, "state: None")?;
-        }
-
-        Ok(())
+        ASGIDisplay::from(self).fmt(f)
     }
 }

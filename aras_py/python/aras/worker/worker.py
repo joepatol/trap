@@ -9,11 +9,9 @@ from aras.types import ASGIApplication
 
 async def main() -> None:
     args = parse_args()
-
-    worker_id = int(args["id"])
     
     app = import_asgi_app(args["app"])
-    worker = Worker(worker_id, app)
+    worker = Worker(app)
 
     server = await asyncio.start_unix_server(worker.serve_asgi_client, args["socket"])
     
@@ -22,7 +20,6 @@ async def main() -> None:
 
 
 class ParsedArgs(TypedDict):
-    id: int
     socket: str
     app: str
 
@@ -30,13 +27,12 @@ class ParsedArgs(TypedDict):
 def parse_args() -> ParsedArgs:
     parser = argparse.ArgumentParser()
 
-    for arg in ["--id", "--socket", "--app"]:
+    for arg in ["--socket", "--app"]:
         parser.add_argument(arg, required=True)
 
     args = parser.parse_args()
 
     return {
-        "id": args.id,
         "socket": args.socket,
         "app": args.app,
     }
@@ -58,8 +54,7 @@ async def read_next_message(reader: StreamReader) -> MutableMapping[str, Any]:
 
 
 class _Send:
-    def __init__(self, writer: StreamWriter, worker_id: int) -> None:
-        self._worker_id = worker_id
+    def __init__(self, writer: StreamWriter) -> None:
         self._writer = writer
     
     async def __call__(self, message: MutableMapping[str, Any]) -> None:
@@ -71,8 +66,7 @@ class _Send:
 
 
 class _Receive:
-    def __init__(self, reader: StreamReader, worker_id: int) -> None:
-        self._worker_id = worker_id
+    def __init__(self, reader: StreamReader) -> None:
         self._reader = reader
         self._disconnect_msg = None
     
@@ -89,8 +83,7 @@ class _Receive:
 
 
 class Worker:
-    def __init__(self, worker_id: int, app: ASGIApplication) -> None:
-        self.worker_id = worker_id
+    def __init__(self, app: ASGIApplication) -> None:
         self.app = app
 
     async def serve_asgi_client(self, reader: StreamReader, writer: StreamWriter) -> None:
@@ -102,11 +95,11 @@ class Worker:
         await self.app(scope, receive, send)
     
     def build_send(self, writer: StreamWriter) -> _Send:
-        return _Send(writer, self.worker_id)
+        return _Send(writer)
     
     def build_receive(self, reader: StreamReader) -> _Receive:
-        return _Receive(reader, self.worker_id)
-    
+        return _Receive(reader)
 
+    
 if __name__ == "__main__":
     asyncio.run(main())
