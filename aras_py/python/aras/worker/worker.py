@@ -68,6 +68,7 @@ class _Send:
         self._writer = writer
     
     async def __call__(self, message: MutableMapping[str, Any]) -> None:
+        print("Python sending: ", message)
         data = msgpack.packb(message)
         length = int.to_bytes(len(data), length=4, byteorder="big")
 

@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::path::Path;
 use std::result::Result;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -138,6 +139,8 @@ impl Worker {
                 }
             };
 
+            println!("Worker {} received {}", self.id, event);
+
             match event {
                 Event::ReceivedFromASGI(message) => {
                     asgi_disconnected = message.is_final();
@@ -145,6 +148,7 @@ impl Worker {
                 }
                 Event::ReceivedFromPython(message) => {
                     py_disconnected = message.is_final();
+                    println!("py disconnected: {}", py_disconnected);
                     send(message).await?;
                 }
             }
@@ -169,6 +173,15 @@ impl From<ASGIReceiveEvent> for Event {
 impl From<ASGISendEvent> for Event {
     fn from(data: ASGISendEvent) -> Self {
         Self::ReceivedFromPython(data)
+    }
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Event::ReceivedFromASGI(msg) => write!(f, "ASGI event: {}", msg),
+            Event::ReceivedFromPython(msg) => write!(f, "Python event: {}", msg),
+        }
     }
 }
 
