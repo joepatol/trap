@@ -40,4 +40,5 @@ def serve_with_workers(
     buffer_size: int = 1024,
     backpressure_timeout: int = 60,
     max_ws_frame_size: int = 64 * 1024,
+    num_workers: int = 2,
 ) -> Awaitable[None]: ...

@@ -59,12 +59,12 @@ fn serve_with_workers<'a>(
     buffer_size: usize,
     backpressure_timeout: u64,
     max_ws_frame_size: usize,
+    num_workers: usize,
 ) -> PyResult<()> {
     tracing_subscriber::fmt()
         .with_max_level(get_log_level_filter(log_level))
         .init();
 
-    let pool = WorkerPool::initialize(2, worker_script, python_executable, import_str, pythonpath);
     let asgi_server = ArasServer::new(
         cancel_token.get_cancel_token(),
         addr.into(),
@@ -81,6 +81,7 @@ fn serve_with_workers<'a>(
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async move {
+        let pool = WorkerPool::initialize(num_workers, worker_script, python_executable, import_str, pythonpath);
         asgi_server.run(pool, String::new()).await.unwrap();
     });
 

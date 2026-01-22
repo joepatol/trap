@@ -1,7 +1,8 @@
+import signal
 import importlib
 import msgpack
 import asyncio
-from asyncio import StreamReader, StreamWriter
+from asyncio import StreamReader, StreamWriter, Server
 import argparse
 from typing import TypedDict, MutableMapping, Any
 from aras.types import ASGIApplication
@@ -15,8 +16,17 @@ async def main() -> None:
 
     server = await asyncio.start_unix_server(worker.serve_asgi_client, args["socket"])
     
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGINT, lambda: asyncio.create_task(stop_server(server)))
+    loop.add_signal_handler(signal.SIGTERM, lambda: asyncio.create_task(stop_server(server)))
+
     async with server:
         await server.serve_forever()
+
+
+async def stop_server(server: Server) -> None:
+    server.close()
+    await server.wait_closed()
 
 
 class ParsedArgs(TypedDict):
@@ -100,6 +110,6 @@ class Worker:
     def build_receive(self, reader: StreamReader) -> _Receive:
         return _Receive(reader)
 
-    
+
 if __name__ == "__main__":
     asyncio.run(main())
