@@ -36,31 +36,31 @@ def serve_experimental(
         pythonpath = f"{root.parent}:{root.parent.parent}"
 
     token = generate_cancel_token()
+    signal.signal(signal.SIGINT, lambda _, __: token.stop())
+    signal.signal(signal.SIGTERM, lambda _, __: token.stop())
+
     cur_dir = Path(__file__).parent
     worker_script = cur_dir / "worker" / "worker.py"
 
-    try:
-        serve_with_workers(
-            application,
-            pythonpath,
-            sys.executable,
-            str(worker_script),
-            token,
-            addr=[int(i) for i in host.split(".")],
-            port=port,
-            keep_alive=keep_alive,
-            log_level=log_level,
-            max_concurrency=max_concurrency,
-            max_size_kb=max_size_kb,
-            request_timeout=request_timeout,
-            rate_limit=rate_limit,
-            buffer_size=buffer_size,
-            backpressure_timeout=backpressure_timeout,
-            max_ws_frame_size=max_ws_frame_size,
-            num_workers=num_workers,
-        )
-    except KeyboardInterrupt:
-        token.stop()
+    serve_with_workers(
+        application,
+        pythonpath,
+        sys.executable,
+        str(worker_script),
+        token,
+        addr=[int(i) for i in host.split(".")],
+        port=port,
+        keep_alive=keep_alive,
+        log_level=log_level,
+        max_concurrency=max_concurrency,
+        max_size_kb=max_size_kb,
+        request_timeout=request_timeout,
+        rate_limit=rate_limit,
+        buffer_size=buffer_size,
+        backpressure_timeout=backpressure_timeout,
+        max_ws_frame_size=max_ws_frame_size,
+        num_workers=num_workers,
+    )
 
 
 def serve(

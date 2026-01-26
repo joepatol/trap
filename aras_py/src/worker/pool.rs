@@ -55,11 +55,11 @@ impl WorkerPool {
         {
             send(ASGISendEvent::new_startup_complete()).await.unwrap();
         } else if results.iter().any(|msg| matches!(msg, ASGISendEvent::StartupFailed(_))) {
-            send(ASGISendEvent::new_startup_failed("A worker failed to start".into()))
+            send(ASGISendEvent::new_startup_failed("Failed to start all workers".into()))
                 .await
                 .unwrap();
         } else {
-            send(ASGISendEvent::new_startup_failed("Unknown startup error".into()))
+            send(ASGISendEvent::new_startup_failed("Received non-lifespan event during startup".into()))
                 .await
                 .unwrap();
         }
@@ -87,11 +87,11 @@ impl WorkerPool {
             .iter()
             .any(|msg| matches!(msg, ASGISendEvent::ShutdownFailed(_)))
         {
-            send(ASGISendEvent::new_shutdown_failed("A worker failed to shutdown".into()))
+            send(ASGISendEvent::new_shutdown_failed("Failed to shutdown all workers".into()))
                 .await
                 .unwrap();
         } else {
-            send(ASGISendEvent::new_shutdown_failed("Unknown shutdown error".into()))
+            send(ASGISendEvent::new_shutdown_failed("Received non-lifespan event during shutdown".into()))
                 .await
                 .unwrap();
         };
