@@ -1,9 +1,9 @@
-use std::fmt::Display;
 use std::path::Path;
 use std::result::Result;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{atomic::{AtomicUsize, Ordering}, Arc};
 use std::time::Duration;
 
+use thiserror::Error;
 use asgispec::prelude::*;
 use asgispec::scope::LifespanScope;
 use log::info;
@@ -14,10 +14,22 @@ use tokio::{
     net::UnixStream,
     process::Command,
     sync::oneshot::{self, Sender},
-    sync::{mpsc, Mutex},
+    sync::Mutex,
 };
 
 use super::get_socket_path;
+
+#[derive(Error, Debug, Clone)]
+enum TaskError {
+    #[error(transparent)]
+    DisconnectedClientError(#[from] Arc<DisconnectedClient>),
+    #[error(transparent)]
+    IOError(#[from] Arc<std::io::Error>),
+    #[error(transparent)]
+    EncodeError(#[from] Arc<rmp_serde::encode::Error>),
+}
+
+type TaskResult = Result<(), TaskError>;
 
 /// Represent a single worker.
 ///
@@ -87,9 +99,9 @@ impl Worker {
         let stream = UnixStream::connect(&self.socket_path).await?;
         let (mut read, mut write) = stream.into_split();
 
-        send_message_to_py(&mut write, Scope::from(scope)).await?;
-        send_message_to_py(&mut write, ASGIReceiveEvent::new_lifespan_startup()).await?;
-        let startup_result = receive_message_from_py(&mut read).await?;
+        send_message_to_py(&mut write, Scope::from(scope)).await.unwrap();
+        send_message_to_py(&mut write, ASGIReceiveEvent::new_lifespan_startup()).await.unwrap();
+        let startup_result = receive_message_from_py(&mut read).await.unwrap();
 
         *self.lifespan_stream.lock().await = Some(write.reunite(read).unwrap());
 
@@ -105,8 +117,8 @@ impl Worker {
             .take()
             .expect("Shutdown called before startup");
         let (mut read, mut write) = stream.into_split();
-        send_message_to_py(&mut write, ASGIReceiveEvent::new_lifespan_shutdown()).await?;
-        let shutdown_result = receive_message_from_py(&mut read).await?;
+        send_message_to_py(&mut write, ASGIReceiveEvent::new_lifespan_shutdown()).await.unwrap();
+        let shutdown_result = receive_message_from_py(&mut read).await.unwrap();
         self.task_count.fetch_sub(1, Ordering::SeqCst);
         Ok(shutdown_result)
     }
@@ -120,161 +132,93 @@ impl Worker {
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.task_count.fetch_add(1, Ordering::SeqCst);
 
-        let stream = UnixStream::connect(&self.socket_path).await?;
+        let stream = UnixStream::connect(&self.socket_path).await.unwrap();
         let (read, mut write) = stream.into_split();
-        send_message_to_py(&mut write, scope).await?;
+        send_message_to_py(&mut write, scope).await.unwrap();
 
-        let (sendx, mut recvx) = mpsc::channel(16);
-        enqueue_py_messages(read, sendx);
+        let (py_sendx, py_recvx) = oneshot::channel();
+        let (rust_sendx, rust_recvx) = oneshot::channel();
 
-        let mut state = WorkerState::BothRunning;
+        run_python_worker_task(read, send, py_sendx);
+        run_server_worker_task(write, receive, rust_sendx);
 
-        while !matches!(state, WorkerState::BothStopped) {
-            state = state
-                .transition(&mut recvx, &mut write, send.clone(), receive.clone())
-                .await?;
-        }
+        let result = tokio::join!(py_recvx, rust_recvx);
+
+        println!("Worker task completed");
+
+        result.0??;
+        result.1??;
 
         self.task_count.fetch_sub(1, Ordering::SeqCst);
         Ok(())
     }
 }
 
-#[derive(Debug)]
-enum WorkerState {
-    BothRunning,
-    BothStopped,
-    PythonRunning,
-    ASGIRunning,
-}
-
-impl WorkerState {
-    async fn transition(
-        self,
-        recv: &mut mpsc::Receiver<ASGISendEvent>,
-        stream: &mut OwnedWriteHalf,
-        send: SendFn,
-        receive: ReceiveFn,
-    ) -> Result<WorkerState, Box<dyn std::error::Error>> {
-        println!("Waiting for event in state: {:?}", self);
-        let event = match self {
-            WorkerState::BothStopped => return Ok(WorkerState::BothStopped),
-            WorkerState::PythonRunning => Event::from(recv.recv().await.unwrap()),
-            WorkerState::ASGIRunning => Event::from(receive().await),
-            WorkerState::BothRunning => {
-                tokio::select! {
-                    // TODO: what about 2 tasks with a oneshot channel?
-                    // state machine would not be necessary
-                    msg = receive() => Event::from(msg),
-                    msg = recv.recv() => Event::from(msg.unwrap()),
-                }
-            }
-        };
-
-        event.execute(stream, send).await?;
-        Ok(self.next(&event))
-    }
-
-    pub fn next(self, event: &Event) -> WorkerState {
-        match (self, event, event.is_final()) {
-            (this, _, false) => this,
-            (WorkerState::BothRunning, Event::ReceivedFromPython(_), true) => WorkerState::ASGIRunning,
-            (WorkerState::BothRunning, Event::ReceivedFromASGI(_), true) => WorkerState::PythonRunning,
-            (WorkerState::PythonRunning, _, true) => WorkerState::BothStopped,
-            (WorkerState::ASGIRunning, _, true) => WorkerState::BothStopped,
-            (WorkerState::BothStopped, _, _) => WorkerState::BothStopped,
-        }
-    }
-}
-
-enum Event {
-    ReceivedFromPython(ASGISendEvent),
-    ReceivedFromASGI(ASGIReceiveEvent),
-}
-
-impl Event {
-    pub async fn execute(&self, stream: &mut OwnedWriteHalf, send: SendFn) -> Result<(), Box<dyn std::error::Error>> {
-        match self {
-            Event::ReceivedFromPython(msg) => send(msg.clone()).await?,
-            Event::ReceivedFromASGI(msg) => send_message_to_py(stream, msg).await?,
-        };
-        Ok(())
-    }
-
-    pub fn is_final(&self) -> bool {
-        match self {
-            Event::ReceivedFromASGI(msg) => msg.is_final(),
-            Event::ReceivedFromPython(msg) => msg.is_final(),
-        }
-    }
-}
-
-impl From<ASGIReceiveEvent> for Event {
-    fn from(data: ASGIReceiveEvent) -> Self {
-        Self::ReceivedFromASGI(data)
-    }
-}
-
-impl From<ASGISendEvent> for Event {
-    fn from(data: ASGISendEvent) -> Self {
-        Self::ReceivedFromPython(data)
-    }
-}
-
-impl Display for Event {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Event::ReceivedFromASGI(msg) => write!(f, "ASGI event: {}", msg),
-            Event::ReceivedFromPython(msg) => write!(f, "Python event: {}", msg),
-        }
-    }
-}
-
-fn enqueue_py_messages(mut stream: OwnedReadHalf, sender: mpsc::Sender<ASGISendEvent>) {
+fn run_server_worker_task(mut stream: OwnedWriteHalf, receive: ReceiveFn, sender: Sender<TaskResult>) {
     tokio::task::spawn(async move {
-        loop {
-            let msg = receive_message_from_py(&mut stream)
-                .await
-                .map_err(|_| tokio::io::Error::new(tokio::io::ErrorKind::Other, "receive error"));
-            if msg.is_err() {
-                break;
-            }
-            let msg = msg.unwrap();
+        let result = loop {
+            let message = receive().await;
+            let final_msg = message.is_final();
 
-            let final_msg = msg.is_final();
-            println!("Enqueued message from Python: {}", msg.variant_str());
-            _ = sender.send(msg).await;
+            if let Err(e) = send_message_to_py(&mut stream, message).await {
+                break e;
+            }
 
             if final_msg {
-                break;
+                break Ok(())
             }
-        }
+        };
+
+        let _ = sender.send(result);
     });
 }
 
-async fn receive_message_from_py(stream: &mut OwnedReadHalf) -> Result<ASGISendEvent, Box<dyn std::error::Error>> {
-    let mut reader = BufReader::new(stream);
+fn run_python_worker_task(mut stream: OwnedReadHalf, send: SendFn, sender: Sender<TaskResult>) {
+    tokio::task::spawn(async move {
+        let result = loop {
+            let message = match receive_message_from_py(&mut stream).await {
+                Ok(message) => message,
+                Err(e) => break e,
+            };
+            let final_msg = message.is_final();
+            println!("{}", message.variant_str());
 
-    let mut buf = [0u8; 4];
-    let _ = reader.read_exact(&mut buf).await?;
-    let length = u32::from_be_bytes(buf) as usize;
+            if let Err(e) = send(message).await {
+                break Err(TaskError::from(Arc::new(e)));
+            };
 
-    let mut data_buf = vec![0u8; length];
-    reader.read_exact(&mut data_buf).await?;
-
-    Ok(rmp_serde::from_slice(&data_buf)?)
+            if final_msg {
+                break Ok(());
+            }
+        };
+        
+        dbg!(&result);
+        let _ = sender.send(result);
+    });
 }
 
-async fn send_message_to_py(
-    stream: &mut OwnedWriteHalf,
-    message: impl Serialize,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let data = rmp_serde::to_vec_named(&message)?;
+async fn receive_message_from_py(stream: &mut OwnedReadHalf) -> Result<ASGISendEvent, TaskResult> {
+    let mut reader = BufReader::new(stream);
+
+    println!("Reading Python message size");
+    let mut buf = [0u8; 4];
+    let _ = reader.read_exact(&mut buf).await.unwrap();
+    dbg!(&buf);
+    let length = u32::from_be_bytes(buf) as usize;
+
+    dbg!(length);
+    let mut data_buf = vec![0u8; length];
+    reader.read_exact(&mut data_buf).await.unwrap();
+    Ok(rmp_serde::from_slice(&data_buf).unwrap())
+}
+
+async fn send_message_to_py(stream: &mut OwnedWriteHalf, message: impl Serialize) -> Result<(), TaskResult> {
+    let data = rmp_serde::to_vec_named(&message).unwrap();
     let length = (data.len() as u32).to_be_bytes();
 
-    stream.write_all(&length).await?;
-    stream.write_all(&data).await?;
-    stream.flush().await?;
+    stream.write_all(&length).await.unwrap();
+    stream.write_all(&data).await.unwrap();
+    stream.flush().await.unwrap();
 
     Ok(())
 }
@@ -285,3 +229,93 @@ fn wait_for_socket(socket_path: &str) {
         std::thread::sleep(Duration::from_millis(10));
     }
 }
+
+// #[derive(Debug)]
+// enum WorkerState {
+//     BothRunning,
+//     BothStopped,
+//     PythonRunning,
+//     ASGIRunning,
+// }
+
+// impl WorkerState {
+//     async fn transition(
+//         self,
+//         recv: &mut mpsc::Receiver<ASGISendEvent>,
+//         stream: &mut OwnedWriteHalf,
+//         send: SendFn,
+//         receive: ReceiveFn,
+//     ) -> Result<WorkerState, Box<dyn std::error::Error>> {
+//         println!("Waiting for event in state: {:?}", self);
+//         let event = match self {
+//             WorkerState::BothStopped => return Ok(WorkerState::BothStopped),
+//             WorkerState::PythonRunning => Event::from(recv.recv().await.unwrap()),
+//             WorkerState::ASGIRunning => Event::from(receive().await),
+//             WorkerState::BothRunning => {
+//                 tokio::select! {
+//                     // TODO: what about 2 tasks with a oneshot channel?
+//                     // state machine would not be necessary
+//                     msg = receive() => Event::from(msg),
+//                     msg = recv.recv() => Event::from(msg.unwrap()),
+//                 }
+//             }
+//         };
+
+//         event.execute(stream, send).await?;
+//         Ok(self.next(&event))
+//     }
+
+//     pub fn next(self, event: &Event) -> WorkerState {
+//         match (self, event, event.is_final()) {
+//             (this, _, false) => this,
+//             (WorkerState::BothRunning, Event::ReceivedFromPython(_), true) => WorkerState::ASGIRunning,
+//             (WorkerState::BothRunning, Event::ReceivedFromASGI(_), true) => WorkerState::PythonRunning,
+//             (WorkerState::PythonRunning, _, true) => WorkerState::BothStopped,
+//             (WorkerState::ASGIRunning, _, true) => WorkerState::BothStopped,
+//             (WorkerState::BothStopped, _, _) => WorkerState::BothStopped,
+//         }
+//     }
+// }
+
+// enum Event {
+//     ReceivedFromPython(ASGISendEvent),
+//     ReceivedFromASGI(ASGIReceiveEvent),
+// }
+
+// impl Event {
+//     pub async fn execute(&self, stream: &mut OwnedWriteHalf, send: SendFn) -> Result<(), Box<dyn std::error::Error>> {
+//         match self {
+//             Event::ReceivedFromPython(msg) => send(msg.clone()).await?,
+//             Event::ReceivedFromASGI(msg) => send_message_to_py(stream, msg).await?,
+//         };
+//         Ok(())
+//     }
+
+//     pub fn is_final(&self) -> bool {
+//         match self {
+//             Event::ReceivedFromASGI(msg) => msg.is_final(),
+//             Event::ReceivedFromPython(msg) => msg.is_final(),
+//         }
+//     }
+// }
+
+// impl From<ASGIReceiveEvent> for Event {
+//     fn from(data: ASGIReceiveEvent) -> Self {
+//         Self::ReceivedFromASGI(data)
+//     }
+// }
+
+// impl From<ASGISendEvent> for Event {
+//     fn from(data: ASGISendEvent) -> Self {
+//         Self::ReceivedFromPython(data)
+//     }
+// }
+
+// impl Display for Event {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match self {
+//             Event::ReceivedFromASGI(msg) => write!(f, "ASGI event: {}", msg),
+//             Event::ReceivedFromPython(msg) => write!(f, "Python event: {}", msg),
+//         }
+//     }
+// }

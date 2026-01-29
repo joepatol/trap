@@ -68,9 +68,11 @@ class _Send:
         self._writer = writer
     
     async def __call__(self, message: MutableMapping[str, Any]) -> None:
-        print("Python sending: ", message.get("type", "<no type>"))
+        # print("Python sending: ", message.get("type", "<no type>"))
         data = msgpack.packb(message)
-        length = int.to_bytes(len(data), length=4, byteorder="big")
+        length = len(data).to_bytes(length=4, byteorder="big")
+        await self._writer.drain()
+        # print("Python send byteslength", length)
 
         self._writer.write(length + data)
         await self._writer.drain()
