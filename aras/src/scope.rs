@@ -1,6 +1,8 @@
-use http::Request;
 use asgispec::prelude::*;
-use asgispec::scope::{HTTPScope, WebsocketScope, LifespanScope}; 
+use asgispec::scope::{HTTPScope, LifespanScope, WebsocketScope};
+use bytes::Bytes;
+use http::Request;
+
 use crate::types::ConnectionInfo;
 
 /// Given a state build ASGI scopes for the supported protocols.
@@ -23,13 +25,18 @@ impl<S: State> ScopeFactory<S> {
             request.method().as_str().to_owned(),
             String::from("http"),
             request.uri().path().to_owned(),
-            request.uri().to_string().as_bytes().to_vec(),
-            request.uri().query().unwrap_or("").as_bytes().to_vec(),
+            Bytes::from(request.uri().to_string()),
+            Bytes::from(request.uri().query().unwrap_or("").to_owned()),
             String::from(""), // Optional, default for now
             request
                 .headers()
                 .into_iter()
-                .map(|(name, value)| (name.as_str().as_bytes().to_vec(), value.as_bytes().to_vec()))
+                .map(|(name, value)| {
+                    (
+                        Bytes::from(name.as_str().to_string()),
+                        Bytes::from(value.as_bytes().to_vec()),
+                    )
+                })
                 .collect(),
             Some((conn.client_ip.to_owned(), conn.client_port)),
             Some((conn.server_ip.to_owned(), conn.server_port)),
@@ -57,13 +64,18 @@ impl<S: State> ScopeFactory<S> {
             format!("{:?}", request.version()),
             String::from("http"),
             request.uri().path().to_owned(),
-            request.uri().to_string().as_bytes().to_vec(),
-            request.uri().query().unwrap_or("").as_bytes().to_vec(),
+            Bytes::from(request.uri().to_string()),
+            Bytes::from(request.uri().query().unwrap_or("").to_owned()),
             String::from(""), // TODO: Optional, default for now
             request
                 .headers()
                 .into_iter()
-                .map(|(name, value)| (name.as_str().as_bytes().to_vec(), value.as_bytes().to_vec()))
+                .map(|(name, value)| {
+                    (
+                        Bytes::from(name.as_str().to_string()),
+                        Bytes::from(value.as_bytes().to_vec()),
+                    )
+                })
                 .collect(),
             Some((conn.client_ip.to_owned(), conn.client_port)),
             Some((conn.server_ip.to_owned(), conn.server_port)),

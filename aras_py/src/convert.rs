@@ -15,7 +15,12 @@ pub fn parse_py_http_response_start(py_map: &Bound<PyMapping>) -> PyResult<ASGIS
         .get_item("headers")
         .and_then(|v| v.extract::<Vec<(Vec<u8>, Vec<u8>)>>())
         .unwrap_or(Vec::new());
-    Ok(ASGISendEvent::new_http_response_start(status, headers))
+
+    let header_bytes = headers.into_iter().map(|(k, v)|{
+        (Bytes::from(k), Bytes::from(v))
+    });
+    
+    Ok(ASGISendEvent::new_http_response_start(status, header_bytes.collect()))
 }
 
 pub fn parse_py_http_response_body(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEvent> {
@@ -66,7 +71,7 @@ fn asgi_scope_into_py<'py>(py: Python<'py>, scope: ASGIScope) -> PyResult<Bound<
 
 pub fn http_scope_into_py<'py>(py: Python<'py>, scope: HTTPScope<PyState>) -> PyResult<Bound<'py, PyDict>> {
     let python_result_dict = PyDict::new(py);
-    python_result_dict.set_item("type", scope.type_.into_pyobject(py)?)?;
+    python_result_dict.set_item("type", "http".into_pyobject(py)?)?;
     python_result_dict.set_item("asgi", asgi_scope_into_py(py, scope.asgi)?)?;
     python_result_dict.set_item("http_version", scope.http_version.into_pyobject(py)?)?;
     python_result_dict.set_item("method", scope.method.into_pyobject(py)?)?;
@@ -78,7 +83,7 @@ pub fn http_scope_into_py<'py>(py: Python<'py>, scope: HTTPScope<PyState>) -> Py
     let py_bytes_headers: Vec<(Bound<PyBytes>, Bound<PyBytes>)> = scope
         .headers
         .into_iter()
-        .map(|(k, v)| (PyBytes::new(py, k.as_slice()), PyBytes::new(py, v.as_slice())))
+        .map(|(k, v)| (PyBytes::new(py, k.iter().as_slice()), PyBytes::new(py, v.iter().as_slice())))
         .collect();
     python_result_dict.set_item("headers", py_bytes_headers.into_pyobject(py)?)?;
     let py_client = match scope.client {
@@ -97,7 +102,7 @@ pub fn http_scope_into_py<'py>(py: Python<'py>, scope: HTTPScope<PyState>) -> Py
 
 pub fn lifespan_scope_into_py<'py>(py: Python<'py>, scope: LifespanScope<PyState>) -> PyResult<Bound<'py, PyDict>> {
     let python_result_dict = PyDict::new(py);
-    python_result_dict.set_item("type", scope.type_.into_pyobject(py)?)?;
+    python_result_dict.set_item("type", "lifespan".into_pyobject(py)?)?;
     python_result_dict.set_item("asgi", asgi_scope_into_py(py, scope.asgi)?)?;
     python_result_dict.set_item("state", scope.state.into_pyobject(py)?)?;
     Ok(python_result_dict)
@@ -124,7 +129,12 @@ pub fn parse_websocket_accept(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEve
         .get_item("headers")
         .and_then(|v| v.extract::<Vec<(Vec<u8>, Vec<u8>)>>())
         .unwrap_or(Vec::new());
-    Ok(ASGISendEvent::new_websocket_accept(subprotocol, headers))
+
+    let header_bytes = headers.into_iter().map(|(k, v)|{
+        (Bytes::from(k), Bytes::from(v))
+    });
+
+    Ok(ASGISendEvent::new_websocket_accept(subprotocol, header_bytes.collect()))
 }
 
 pub fn parse_websocket_send(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEvent> {
@@ -176,13 +186,13 @@ pub fn websocket_disconnect_into_py<'py>(py: Python<'py>, event: WebsocketDiscon
     let python_result_dict = PyDict::new(py);
     python_result_dict.set_item("type", "websocket.disconnect".into_pyobject(py)?)?;
     python_result_dict.set_item("code", event.code.into_pyobject(py)?)?;
-    python_result_dict.set_item("reason", String::new().into_pyobject(py)?)?;
+    python_result_dict.set_item("reason", event.reason.into_pyobject(py)?)?;
     Ok(python_result_dict)
 }
 
 pub fn websocket_scope_into_py<'py>(py: Python<'py>, scope: WebsocketScope<PyState>) -> PyResult<Bound<'py, PyDict>> {
     let python_result_dict = PyDict::new(py);
-    python_result_dict.set_item("type", scope.type_.into_pyobject(py)?)?;
+    python_result_dict.set_item("type", "websocket".into_pyobject(py)?)?;
     python_result_dict.set_item("asgi", asgi_scope_into_py(py, scope.asgi)?)?;
     python_result_dict.set_item("http_version", scope.http_version.into_pyobject(py)?)?;
     python_result_dict.set_item("scheme", scope.scheme.into_pyobject(py)?)?;
@@ -193,7 +203,7 @@ pub fn websocket_scope_into_py<'py>(py: Python<'py>, scope: WebsocketScope<PySta
     let py_bytes_headers: Vec<(Bound<PyBytes>, Bound<PyBytes>)> = scope
         .headers
         .into_iter()
-        .map(|(k, v)| (PyBytes::new(py, k.as_slice()), PyBytes::new(py, v.as_slice())))
+        .map(|(k, v)| (PyBytes::new(py, k.iter().as_slice()), PyBytes::new(py, v.iter().as_slice())))
         .collect();
     python_result_dict.set_item("headers", py_bytes_headers.into_pyobject(py)?)?;
     let py_client = match scope.client {
