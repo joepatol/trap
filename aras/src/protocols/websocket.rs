@@ -25,6 +25,7 @@ use crate::{ArasError, ArasResult};
 pub(crate) struct WebsocketHandler {
     timeout: Duration,
     max_frame_size: usize,
+    client: String,
 }
 
 impl WebsocketHandler {
@@ -77,14 +78,14 @@ impl WebsocketHandler {
 
         let mut state = State::Starting;
         let mut context = Context::new(self.max_frame_size, send_to_app, receive_from_app, ws);
-        info!("Connecting websocket");
+        info!("Connecting websocket client: {}", self.client);
 
         while !matches!(state, State::Closed) {
             let event = context.next_event().await;
             state = state.on_event(event, &mut context).await;
         };
 
-        info!("Websocket connection closed");
+        info!("Websocket connection closed for client: {}", self.client);
     }
 }
 
