@@ -226,11 +226,11 @@ impl State {
         S: SendToASGIApp,
         R: ReceiveFromASGIApp,
     {
+        info!("Closing websocket with code {code}");
         let frame = Frame::close(code.into(), msg.as_bytes());
         let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(code.into(), msg.into());
         let _ = ctx.websocket.write_frame(frame).await;
         let _ = ctx.send_to_app(asgi_event).await;
-        info!("Closing websocket with code {code}");
         Self::Closed
     }
 }
