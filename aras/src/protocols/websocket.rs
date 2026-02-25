@@ -14,7 +14,7 @@ use http::StatusCode;
 use http_body_util::{BodyExt, Empty, Full};
 use hyper::body::Body;
 use hyper::Request;
-use log::error;
+use log::{error, info};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
@@ -66,7 +66,7 @@ impl WebsocketHandler {
         send_to_app: impl SendToASGIApp + 'static,
         receive_from_app: impl ReceiveFromASGIApp + 'static,
     ) {
-        let mut ws = match upgrade_future.await {
+        let ws = match upgrade_future.await {
             // ASGI requires unfragmented messages to the application. So just use FragmentCollector.
             Ok(ws) => FragmentCollector::new(ws),
             Err(e) => {
@@ -76,12 +76,15 @@ impl WebsocketHandler {
         };
 
         let mut state = State::Starting;
-        let mut context = Context::new(self.max_frame_size, send_to_app, receive_from_app);
+        let mut context = Context::new(self.max_frame_size, send_to_app, receive_from_app, ws);
+        info!("Connecting websocket");
 
         while !matches!(state, State::Closed) {
-            let event = Event::next(&mut ws, &mut context).await;
-            state = state.on_event(event, &mut ws, &mut context).await;
-        }
+            let event = context.next_event().await;
+            state = state.on_event(event, &mut context).await;
+        };
+
+        info!("Websocket connection closed");
     }
 }
 
@@ -150,60 +153,40 @@ impl TryFrom<WebsocketCloseEvent> for ConnectResponse {
 enum State {
     Starting,
     Running,
-    Error(ArasError),
-    Closing(u16, String),
     Closed,
 }
 
 impl State {
-    pub async fn on_event<W, S, R>(&self, event: Event, ws: &mut FragmentCollector<W>, ctx: &mut Context<S, R>) -> Self 
+    pub async fn on_event<W, S, R>(&self, event: Event, ctx: &mut Context<S, R, W>) -> Self 
     where
         W: AsyncRead + AsyncWrite + Unpin,
         S: SendToASGIApp,
         R: ReceiveFromASGIApp,
     {   
-        let next_state = match event {
+        match event {
             Event::FrameReceived(frame) => self.on_frame_received(frame, ctx).await,
-            Event::ASGIEventReceived(asgi) => self.on_asgi_received(asgi, ws, ctx).await,
-            Event::ErrorOccurred(error) => self.on_error(error).await,
-        };
-
-        match next_state {
-            State::Error(e) => self.on_error(e.clone()).await,
-            State::Closing(code, msg) => self.close(code.clone(), msg.clone(), ws, ctx).await,
-            s => s,
+            Event::ASGIEventReceived(asgi) => self.on_asgi_received(asgi, ctx).await,
+            Event::ErrorOccurred(error) => self.on_error(error, ctx).await,
         }
     }
 
-    async fn close<W, S, R>(&self, code: u16, msg: String, ws: &mut FragmentCollector<W>, ctx: &mut Context<S, R>) -> Self 
-    where 
+    async fn on_frame_received<W, S, R>(&self, frame: ASGIReceiveEvent, ctx: &mut Context<S, R, W>) -> Self 
+    where
         W: AsyncRead + AsyncWrite + Unpin,
         S: SendToASGIApp,
         R: ReceiveFromASGIApp,
     {
-        let frame = Frame::close(code.into(), msg.as_bytes());
-        let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(code.into(), msg.into());
-        let _ = ws.write_frame(frame).await;
-        let _ = ctx.send_to_app(asgi_event).await;
-        Self::Closed
-    }
-
-    async fn on_frame_received<S, R>(&self, frame: ASGIReceiveEvent, ctx: &mut Context<S, R>) -> Self 
-    where
-        S: SendToASGIApp,
-        R: ReceiveFromASGIApp,
-    {
         if let ASGIReceiveEvent::WebsocketDisconnect(msg) = frame {
-            return Self::Closing(msg.code, msg.reason)
-        }
+            return self.close(msg.code, msg.reason, ctx).await;
+        };
 
         match ctx.send_to_app(frame).await {
             Ok(_) => Self::Running,
-            Err(e) => Self::Error(e),
+            Err(e) => self.on_error(e, ctx).await,
         }
     }
 
-    async fn on_asgi_received<W, S, R>(&self, asgi: ASGISendEvent, ws: &mut FragmentCollector<W>, ctx: &mut Context<S, R>) -> Self 
+    async fn on_asgi_received<W, S, R>(&self, asgi: ASGISendEvent, ctx: &mut Context<S, R, W>) -> Self 
     where
         W: AsyncRead + AsyncWrite + Unpin,
         S: SendToASGIApp,
@@ -211,56 +194,61 @@ impl State {
     {
         let ws_send = match asgi {
             ASGISendEvent::WebsocketSend(msg) => msg,
-            ASGISendEvent::WebsocketClose(msg) => return Self::Closing(msg.code, msg.reason),
-            _ => return Self::Error(ArasError::unexpected_asgi_message(Arc::new(asgi))),
+            ASGISendEvent::WebsocketClose(msg) => return self.close(msg.code, msg.reason, ctx).await,
+            _ => return self.on_error(ArasError::unexpected_asgi_message(Arc::new(asgi)), ctx).await,
         };
-        let frames = ctx.frame_builder.build(ws_send);
-        for frame in frames {
-            if let Err(e) = ws.write_frame(frame).await {
-                return Self::Error(e.into());
+
+        let mut frames = ctx.frame_builder.build(ws_send);
+        
+        while let Some(frame) = frames.pop_front() {
+            if let Err(e) = ctx.websocket.write_frame(frame).await {
+                return self.on_error(e.into(), ctx).await;
             }
         };
+        
         Self::Running
     }
 
-    async fn on_error(&self, error: ArasError) -> Self {
-        error!("Error in websocket loop: {}", error);
-        Self::Closing(CloseCode::Error.into(), "Internal server error".into())
-    }
-}
-
-enum Event {
-    FrameReceived(ASGIReceiveEvent),
-    ASGIEventReceived(ASGISendEvent),
-    ErrorOccurred(ArasError),
-}
-
-impl Event {
-    pub async fn next<W, S, R>(ws: &mut FragmentCollector<W>, ctx: &mut Context<S, R>) -> Self
+    async fn on_error<W, S, R>(&self, error: ArasError, ctx: &mut Context<S, R, W>) -> Self 
     where
         W: AsyncRead + AsyncWrite + Unpin,
         S: SendToASGIApp,
         R: ReceiveFromASGIApp,
     {
-        tokio::select! {
-            out = ws.read_frame() => Event::from(out),
-            out = ctx.receive_from_app() => Event::from(out),
-        }
+        error!("Error during websocket connection: {}", error);
+        self.close(CloseCode::Error.into(), "Internal server error".into(), ctx).await
+    }
+
+    async fn close<W, S, R>(&self, code: u16, msg: String, ctx: &mut Context<S, R, W>) -> Self 
+    where 
+        W: AsyncRead + AsyncWrite + Unpin,
+        S: SendToASGIApp,
+        R: ReceiveFromASGIApp,
+    {
+        let frame = Frame::close(code.into(), msg.as_bytes());
+        let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(code.into(), msg.into());
+        let _ = ctx.websocket.write_frame(frame).await;
+        let _ = ctx.send_to_app(asgi_event).await;
+        info!("Closing websocket with code {code}");
+        Self::Closed
     }
 }
 
-struct Context<S, R> 
+struct Context<S, R, W> 
 where
+    W: AsyncRead + AsyncWrite + Unpin,
     S: SendToASGIApp,
     R: ReceiveFromASGIApp,
 {
     frame_builder: FrameBuilder,
     send_to_app: S,
     receive_from_app: R,
+    websocket: FragmentCollector<W>,
 }
 
-impl<S, R> Context<S, R> 
+impl<S, R, W> Context<S, R, W> 
 where
+    W: AsyncRead + AsyncWrite + Unpin,
     S: SendToASGIApp,
     R: ReceiveFromASGIApp,
 {
@@ -268,22 +256,36 @@ where
         max_frame_size: usize,
         send_to_app: S,
         receive_from_app: R,
+        websocket: FragmentCollector<W>,
     ) -> Self {
         let frame_builder = FrameBuilder::new(max_frame_size);
         Self {
             frame_builder,
             send_to_app,
             receive_from_app,
+            websocket,
+        }
+    }
+
+    pub async fn next_event(&mut self) -> Event {
+        let ws = &mut self.websocket;
+        let app = &mut self.receive_from_app;
+
+        tokio::select! {
+            out = ws.read_frame() => Event::from(out),
+            out = app.receive() => Event::from(out),
         }
     }
 
     pub async fn send_to_app(&mut self, event: ASGIReceiveEvent) -> ArasResult<()> {
         self.send_to_app.send(event).await
     }
+}
 
-    pub async fn receive_from_app(&mut self) -> ArasResult<ASGISendEvent> {
-        self.receive_from_app.receive().await
-    }
+enum Event {
+    FrameReceived(ASGIReceiveEvent),
+    ASGIEventReceived(ASGISendEvent),
+    ErrorOccurred(ArasError),
 }
 
 impl From<StdResult<Frame<'_>, WebSocketError>> for Event {
@@ -347,8 +349,6 @@ impl From<ASGISendEvent> for Event {
     }
 }  
 
-/// Build websocket frames from ASGI websocket send events.
-/// Frames are fragmented according to the max_frame_size.
 #[derive(Constructor)]
 struct FrameBuilder {
     max_frame_size: usize,
