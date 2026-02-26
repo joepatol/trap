@@ -517,11 +517,10 @@ mod tests {
         run_ws_until_complete(ctx).await;
 
         let written_to_stream = stream.written_unmasked().unwrap();
-        println!("Written to stream: {written_to_stream:?}");
         assert!(written_to_stream.len() == 3);
         assert!(written_to_stream[0] == "hello client");
         assert!(written_to_stream[1] == "im the server");
-        // assert!(written_to_stream[2] == "goodbye");
+        assert!(written_to_stream[2].contains("goodbye"));
 
         let send_to_app = send_to.get_messages().await;
         assert!(send_to_app.len() == 1);
