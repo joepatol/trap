@@ -66,8 +66,8 @@ fn generate_cancel_token() -> PyStopServerToken {
 ///
 /// A cancellation token is also required to allow shutdown of the server from Python, the token can be generated using the `generate_cancel_token` function.
 ///
-/// What you probably want is to create a cancel token, run this function using `event_loop.run_until_complete`, and then when you want to stop the server call
-/// token.stop() from another thread or signal handler.
+/// What you probably want is to create a cancel token, run the awaitable returned by this function using `event_loop.run_until_complete`, and then when 
+/// you want to stop the server call token.stop() from another thread or signal handler.
 ///
 /// The ARAS Python package will do this ceremony for the user when using `aras.serve` or the CLI. This lower level function is only required when the user requires
 /// more control over the event loop (e.g. use something other than asyncio, or integrate into an existing event loop), or over the cancellation.
