@@ -15,4 +15,4 @@ Using the protocol server from Python is done by installing the `aras_py` packag
 
 - Implement worker pool for Python workers
 - Hot reloading
-- Configuration object, supoort file config
+- Configuration object & configuration through config file
