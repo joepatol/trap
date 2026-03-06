@@ -5,12 +5,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Set up Rust
-        uses: actions/setup-rust@v1
+      - name: Run Rust tests
+        uses: actions-rs/cargo@v1
         with:
-          rust-version: stable
-      - name: Run tests
-        run: cargo test --all --verbose
+          command: test
   test_python:
     runs-on: ubuntu-latest
     steps:
@@ -19,6 +17,8 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: '3.13'
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v7
       - name: Install dependencies
         run: uv pip install aras_py
       - name: Run Python tests
