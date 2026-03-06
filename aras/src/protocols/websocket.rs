@@ -135,10 +135,7 @@ impl TryFrom<WebsocketAcceptEvent> for ConnectResponse {
             .boxed();
         builder = builder.status(StatusCode::SWITCHING_PROTOCOLS);
         if let Some(subprotocol) = value.subprotocol {
-            builder = builder.header(
-                hyper::header::SEC_WEBSOCKET_PROTOCOL,
-                subprotocol,
-            );
+            builder = builder.header(hyper::header::SEC_WEBSOCKET_PROTOCOL, subprotocol);
         }
         for (bytes_key, bytes_value) in value.headers.into_iter() {
             builder = builder.header(bytes_key.to_vec(), bytes_value.to_vec());

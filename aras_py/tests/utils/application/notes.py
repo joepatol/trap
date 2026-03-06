@@ -44,7 +44,7 @@ def update_note(
         )
     update_data = payload.dict(exclude_unset=True)
     note_query.filter(db_models.Note.id == noteId).update(
-        update_data,
+        update_data,  # type: ignore
         synchronize_session=False,  # type: ignore
     )
     db.commit()

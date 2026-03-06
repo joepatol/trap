@@ -12,7 +12,7 @@ jobs:
       - name: Run rust linter
         uses: actions-rs/cargo@v1
         with:
-          command: clippy
+          command: check
   test_python:
     runs-on: ubuntu-latest
     defaults:
