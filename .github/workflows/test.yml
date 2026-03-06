@@ -27,7 +27,7 @@ jobs:
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v7
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --extra dev,hot-reload
       - name: Run Python tests
         run: uv run pytest tests --verbose
       - name: Run Python type checks
