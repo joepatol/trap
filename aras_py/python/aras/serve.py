@@ -1,8 +1,6 @@
 import asyncio
 import signal
 
-from watchfiles import run_process, DefaultFilter
-
 from .aras import generate_cancel_token, serve_python  # type: ignore
 from .types import ASGIApplication, LogLevel
 
@@ -23,6 +21,13 @@ def serve(
     hot_reload: bool = False,
 ) -> None:
     if hot_reload:
+        try:
+            from watchfiles import run_process, DefaultFilter
+        except ImportError:
+            raise ImportError(
+                "watchfiles is required for hot reload. Please install it with 'pip install aras_py[hot-reload]'."
+            )
+
         run_process(
             ".",
             target=_serve,
