@@ -90,6 +90,13 @@ def cli() -> None:
     help="Set the max size of a single websocket frame in bytes",
     show_default=True,
 )
+@click.option(
+    "--reload",
+    is_flag=True,
+    help="Enable hot reload for development. Automatically restarts the server when code changes.",
+    default=False,
+    show_default=True,
+)
 def serve(
     application: str,
     host: str,
@@ -103,6 +110,7 @@ def serve(
     buffer_size: int,
     backpressure_timeout: int,
     max_ws_frame_size: int,
+    reload: bool,
 ) -> None:
     # Insert current working directory to sys.path to make sure the dynamic import,
     # which is referenced from the cwd, works correctly.
@@ -132,4 +140,5 @@ def serve(
         buffer_size,
         backpressure_timeout,
         max_ws_frame_size,
+        reload,
     )

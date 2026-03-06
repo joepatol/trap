@@ -1,11 +1,65 @@
 import asyncio
 import signal
 
+from watchfiles import run_process, DefaultFilter
+
 from .aras import generate_cancel_token, serve_python  # type: ignore
 from .types import ASGIApplication, LogLevel
 
 
 def serve(
+    application: ASGIApplication,
+    host: str = "127.0.0.1",
+    port: int = 8080,
+    log_level: LogLevel = "INFO",
+    keep_alive: bool = True,
+    max_concurrency: int | None = None,
+    max_size_kb: int = 1_000_000,
+    request_timeout: int = 180,
+    rate_limit: tuple[int, int] = (1000, 1),
+    buffer_size: int = 1024,
+    backpressure_timeout: int = 60,
+    max_ws_frame_size: int = 64 * 1024,
+    hot_reload: bool = False,
+) -> None:
+    if hot_reload:
+        run_process(
+            ".",
+            target=_serve,
+            args=(
+                application,
+                host,
+                port,
+                log_level,
+                keep_alive,
+                max_concurrency,
+                max_size_kb,
+                request_timeout,
+                rate_limit,
+                buffer_size,
+                backpressure_timeout,
+                max_ws_frame_size,
+            ),
+            watch_filter=DefaultFilter(),
+        )
+    else:
+        _serve(
+            application,
+            host,
+            port,
+            log_level,
+            keep_alive,
+            max_concurrency,
+            max_size_kb,
+            request_timeout,
+            rate_limit,
+            buffer_size,
+            backpressure_timeout,
+            max_ws_frame_size,
+        )
+
+
+def _serve(
     application: ASGIApplication,
     host: str = "127.0.0.1",
     port: int = 8080,
