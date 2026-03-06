@@ -22,7 +22,7 @@ def serve(
 ) -> None:
     if hot_reload:
         try:
-            from watchfiles import run_process, DefaultFilter
+            from watchfiles import DefaultFilter, run_process
         except ImportError:
             raise ImportError(
                 "watchfiles is required for hot reload. Please install it with 'pip install aras_py[hot-reload]'."
