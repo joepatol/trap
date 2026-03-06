@@ -445,37 +445,11 @@ fn merge_responses(app_response: Response, upgrade_response: http::Response<Empt
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        WebsocketHandler,
-        Context,
-        State,
-        Event,
-    };
-
-    use std::time::Duration;
-    use std::vec;
-
-    use asgispec::prelude::*;
-    use bytes::Bytes;
-    use tokio::io::{AsyncRead, AsyncWrite};
+mod test_utils {
     use fastwebsockets::{FragmentCollector, Role, WebSocket};
-    use http::Request;
+    use crate::mocks::stream::MockWebsocketStream;  
 
-    use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
-    use crate::mocks::communication::{DeterministicReceiveFromApp, SendToAppCollector};
-    use crate::mocks::stream::MockWebsocketStream;
-
-    fn build_websocket_request() -> Request<String> {
-        Request::builder()
-            .header("Connection", "Upgrade")
-            .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
-            .header("sec-websocket-version", "13")
-            .body("".to_string())
-            .expect("Failed to build request")
-    }
-
-    fn build_websocket_client(
+    pub fn build_websocket_client(
         messages: Option<Vec<&str>>,
     ) -> (MockWebsocketStream, FragmentCollector<MockWebsocketStream>) {
         let stream;
@@ -487,6 +461,168 @@ mod tests {
         let ws = WebSocket::after_handshake(stream.clone(), Role::Client);
         let arc_ws = FragmentCollector::new(ws);
         (stream, arc_ws)
+    }
+}
+
+#[cfg(test)]
+mod test_state_transitions {
+    use asgispec::prelude::*;
+    
+    use super::{
+        Event,
+        State,
+        Context,
+        test_utils::build_websocket_client,
+    };
+    use crate::mocks::communication::{DeterministicReceiveFromApp, SendToAppCollector};
+
+    #[tokio::test]
+    async fn test_running_asgi_send_received() {
+        let (stream, ws) = build_websocket_client(None);
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![]);
+
+        let state = State::Running;
+        let event = Event::ASGIEventReceived(ASGISendEvent::new_websocket_send(None, Some("hello".into())));
+        let mut context = Context::new(1024, send_to, receive_from, ws);
+
+        let new_state = state.on_event(event, &mut context).await;
+
+        assert!(matches!(new_state, State::Running));
+        let written_to_stream = stream.written_unmasked().unwrap();
+        assert!(written_to_stream.len() == 1);
+        assert!(written_to_stream[0] == "hello");
+    }
+
+    #[tokio::test]
+    async fn test_running_frame_data_received() {
+        let (_, ws) = build_websocket_client(None);
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![]);
+
+        let state = State::Running;
+        let event = Event::FrameReceived(ASGIReceiveEvent::new_websocket_receive(None, Some("frame".into())));
+        let mut context = Context::new(1024, send_to.clone(), receive_from, ws);
+
+        let new_state = state.on_event(event, &mut context).await;
+
+        assert!(matches!(new_state, State::Running));
+        let send_to_app = send_to.get_messages().await;
+        assert!(send_to_app.len() == 1);
+        assert!(send_to_app[0] == ASGIReceiveEvent::new_websocket_receive(None, Some("frame".into())));
+    }
+
+    #[tokio::test]
+    async fn test_running_error_occurred() {
+        let (stream, ws) = build_websocket_client(None);
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![]);
+
+        let state = State::Running;
+        let event = Event::ErrorOccurred(crate::ArasError::Custom("whoops".into()));
+        let mut context = Context::new(1024, send_to.clone(), receive_from, ws);
+
+        let new_state = state.on_event(event, &mut context).await;
+
+        assert!(matches!(new_state, State::Closed));
+        let send_to_app = send_to.get_messages().await;
+        let written_to_stream = stream.written_unmasked().unwrap();
+        assert!(written_to_stream.len() == 1);
+        assert!(written_to_stream[0].contains("Internal server error"));
+        assert!(send_to_app.len() == 1);
+        assert!(matches!(send_to_app[0], ASGIReceiveEvent::WebsocketDisconnect(_)));
+    }
+
+    #[tokio::test]
+    async fn test_running_close_frame_received() {
+        let (stream, ws) = build_websocket_client(None);
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![]);
+
+        let state = State::Running;
+        let event = Event::FrameReceived(ASGIReceiveEvent::new_websocket_disconnect(1000, "goodbye".into()));
+        let mut context = Context::new(1024, send_to.clone(), receive_from, ws);
+
+        let new_state = state.on_event(event, &mut context).await;
+
+        assert!(matches!(new_state, State::Closed));
+        let send_to_app = send_to.get_messages().await;
+        let written_to_stream = stream.written_unmasked().unwrap();
+        assert!(written_to_stream.len() == 1);
+        assert!(written_to_stream[0].contains("goodbye"));
+        assert!(send_to_app.len() == 1);
+        assert!(matches!(send_to_app[0], ASGIReceiveEvent::WebsocketDisconnect(_)));
+    }
+
+    #[tokio::test]
+    async fn test_running_close_asgi_received() {
+        let (stream, ws) = build_websocket_client(None);
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![]);
+
+        let state = State::Running;
+        let event = Event::ASGIEventReceived(ASGISendEvent::new_websocket_close(1000, "goodbye".into()));
+        let mut context = Context::new(1024, send_to.clone(), receive_from, ws);
+
+        let new_state = state.on_event(event, &mut context).await;
+
+        assert!(matches!(new_state, State::Closed));
+        let send_to_app = send_to.get_messages().await;
+        let written_to_stream = stream.written_unmasked().unwrap();
+        assert!(written_to_stream.len() == 1);
+        assert!(written_to_stream[0].contains("goodbye"));
+        assert!(send_to_app.len() == 1);
+        assert!(matches!(send_to_app[0], ASGIReceiveEvent::WebsocketDisconnect(_)));
+    }
+
+    #[tokio::test]
+    async fn test_closed_any_event() {
+        let (stream, ws) = build_websocket_client(None);
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![]);
+
+        let state = State::Closed;
+        let event = Event::ASGIEventReceived(ASGISendEvent::new_websocket_close(1000, "goodbye".into()));
+        let mut context = Context::new(1024, send_to.clone(), receive_from, ws);
+
+        let new_state = state.on_event(event, &mut context).await;
+
+        assert!(matches!(new_state, State::Closed));
+        let send_to_app = send_to.get_messages().await;
+        let written_to_stream = stream.written_unmasked().unwrap();
+        assert!(written_to_stream.is_empty());
+        assert!(send_to_app.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod test_handler {
+    use super::{
+        WebsocketHandler,
+        Context,
+        State,
+        Event,
+        test_utils::build_websocket_client,
+    };
+
+    use std::time::Duration;
+    use std::vec;
+
+    use asgispec::prelude::*;
+    use bytes::Bytes;
+    use tokio::io::{AsyncRead, AsyncWrite};
+    use http::Request;
+
+    use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
+    use crate::mocks::communication::{DeterministicReceiveFromApp, SendToAppCollector};
+
+    fn build_websocket_request() -> Request<String> {
+        Request::builder()
+            .header("Connection", "Upgrade")
+            .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
+            .header("sec-websocket-version", "13")
+            .body("".to_string())
+            .expect("Failed to build request")
     }
 
     async fn run_ws_until_complete<S, R, W>(mut context: Context<S, R, W>)
