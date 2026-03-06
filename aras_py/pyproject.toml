@@ -24,7 +24,7 @@ module-name = "aras"
 bindings = "pyo3"
 features = ["pyo3/extension-module"]
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "pytest",
     "pytest-asyncio",

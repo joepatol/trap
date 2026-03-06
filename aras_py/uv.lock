@@ -72,7 +72,7 @@ dependencies = [
     { name = "click", version = "8.3.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
 ]
 
-[package.dev-dependencies]
+[package.optional-dependencies]
 dev = [
     { name = "fastapi", version = "0.124.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "fastapi", version = "0.128.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
@@ -100,24 +100,23 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "click", specifier = ">=8.0.0" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "fastapi" },
-    { name = "fastapi-utils" },
-    { name = "httpx" },
-    { name = "jinja2" },
-    { name = "maturin" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-timeout" },
-    { name = "python-multipart" },
-    { name = "sqlalchemy" },
-    { name = "typing-inspect" },
-    { name = "websockets" },
+requires-dist = [
+    { name = "click", specifier = ">=8.0.0" },
+    { name = "fastapi", marker = "extra == 'dev'" },
+    { name = "fastapi-utils", marker = "extra == 'dev'" },
+    { name = "httpx", marker = "extra == 'dev'" },
+    { name = "jinja2", marker = "extra == 'dev'" },
+    { name = "maturin", marker = "extra == 'dev'" },
+    { name = "mypy", marker = "extra == 'dev'" },
+    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'" },
+    { name = "pytest-timeout", marker = "extra == 'dev'" },
+    { name = "python-multipart", marker = "extra == 'dev'" },
+    { name = "sqlalchemy", marker = "extra == 'dev'" },
+    { name = "typing-inspect", marker = "extra == 'dev'" },
+    { name = "websockets", marker = "extra == 'dev'" },
 ]
+provides-extras = ["dev"]
 
 [[package]]
 name = "backports-asyncio-runner"
