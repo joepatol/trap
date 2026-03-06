@@ -1,7 +1,7 @@
-name: testAras
+name: Test trap
 on: [push]
 jobs:
-  test_aras:
+  test_rust:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -9,10 +9,11 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-  test_aras_py:
+  test_python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        path: aras_py
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
@@ -20,6 +21,6 @@ jobs:
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v7
       - name: Install dependencies
-        run: uv pip install ./aras_py --system
+        run: uv sync --extra dev
       - name: Run Python tests
-        run: uv run pytest ./aras_py/tests --verbose
+        run: uv run pytest tests --verbose
