@@ -1,0 +1,25 @@
+name: testAras
+on: [push]
+jobs:
+  test_aras:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Rust
+        uses: actions/setup-rust@v1
+        with:
+          rust-version: stable
+      - name: Run tests
+        run: cargo test --all --verbose
+    test_python:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v2
+        - name: Set up Python
+          uses: actions/setup-python@v2
+          with:
+            python-version: '3.13'
+        - name: Install dependencies
+          run: uv pip install aras_py
+        - name: Run Python tests
+          run: uv pytest tests/ --verbose
