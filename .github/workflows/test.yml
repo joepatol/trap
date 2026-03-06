@@ -1,4 +1,4 @@
-name: Test trap
+name: testTrap
 on: [push]
 jobs:
   test_rust:
@@ -11,9 +11,11 @@ jobs:
           command: test
   test_python:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aras_py
     steps:
       - uses: actions/checkout@v2
-        path: aras_py
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
