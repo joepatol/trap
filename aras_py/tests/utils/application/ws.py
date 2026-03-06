@@ -38,6 +38,7 @@ html_simple = """
 </html>
 """
 
+
 @router.get("/simple")
 async def get():
     return HTMLResponse(html_simple)

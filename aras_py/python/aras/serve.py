@@ -1,8 +1,8 @@
 import asyncio
 import signal
 
-from .aras import serve_python, generate_cancel_token  # type: ignore
-from .types import LogLevel, ASGIApplication
+from .aras import generate_cancel_token, serve_python  # type: ignore
+from .types import ASGIApplication, LogLevel
 
 
 def serve(
@@ -24,7 +24,7 @@ def serve(
 
     loop.add_signal_handler(signal.SIGINT, token.stop)
     loop.add_signal_handler(signal.SIGTERM, token.stop)
-    
+
     loop.run_until_complete(
         serve_python(
             application,

@@ -51,12 +51,15 @@ impl<S: State> ScopeFactory<S> {
             .into_iter()
             .filter(|(k, _)| k.as_str().to_lowercase() == "sec-websocket-protocol")
             .map(|(_, v)| {
-                let mut txt = String::from_utf8_lossy(&v.as_bytes().to_vec()).to_string();
+                let mut txt = String::from_utf8_lossy(v.as_bytes()).to_string();
                 txt.retain(|c| !c.is_whitespace());
                 txt
             })
-            .map(|s| s.split(",").map(|substr| substr.to_owned()).collect::<Vec<String>>())
-            .flatten()
+            .flat_map(|s| {
+                s.split(",")
+                    .map(|substr| substr.to_owned())
+                    .collect::<Vec<String>>()
+            })
             .collect();
 
         let scope = WebsocketScope::new(
@@ -86,6 +89,9 @@ impl<S: State> ScopeFactory<S> {
     }
 
     pub fn build_lifespan(&self) -> Scope<S> {
-        Scope::Lifespan(LifespanScope::new(ASGIScope::default(), Some(self.state.clone())))
+        Scope::Lifespan(LifespanScope::new(
+            ASGIScope::default(),
+            Some(self.state.clone()),
+        ))
     }
 }

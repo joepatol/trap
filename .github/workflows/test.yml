@@ -9,6 +9,10 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
+      - name: Run rust linter
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
   test_python:
     runs-on: ubuntu-latest
     defaults:
@@ -26,3 +30,9 @@ jobs:
         run: uv sync --extra dev
       - name: Run Python tests
         run: uv run pytest tests --verbose
+      - name: Run Python type checks
+        run: uv run mypy .
+      - name: Run Python linter
+        run: uv run ruff check
+      - name: Run isort check
+        run: uv run isort . --check

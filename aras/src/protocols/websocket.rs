@@ -9,7 +9,9 @@ use asgispec::prelude::*;
 use bytes::Bytes;
 use derive_more::derive::Constructor;
 use fastwebsockets::upgrade::UpgradeFut;
-use fastwebsockets::{upgrade, CloseCode, FragmentCollector, Frame, OpCode, Payload, WebSocketError};
+use fastwebsockets::{
+    upgrade, CloseCode, FragmentCollector, Frame, OpCode, Payload, WebSocketError,
+};
 use http::StatusCode;
 use http_body_util::{BodyExt, Empty, Full};
 use hyper::body::Body;
@@ -55,7 +57,9 @@ impl WebsocketHandler {
         send_to: &mut impl SendToASGIApp,
         receive_from: &mut impl ReceiveFromASGIApp,
     ) -> ArasResult<ConnectResponse> {
-        send_to.send(ASGIReceiveEvent::new_websocket_connect()).await?;
+        send_to
+            .send(ASGIReceiveEvent::new_websocket_connect())
+            .await?;
         tokio::time::timeout(self.timeout, receive_from.receive())
             .await??
             .try_into()
@@ -83,7 +87,7 @@ impl WebsocketHandler {
         while !matches!(state, State::Closed) {
             let event = Event::next(&mut context).await;
             state = state.on_event(event, &mut context).await;
-        };
+        }
 
         info!("Websocket connection closed for client: {}", self.client);
     }
@@ -130,9 +134,12 @@ impl TryFrom<WebsocketAcceptEvent> for ConnectResponse {
             .map_err(|never| match never {})
             .boxed();
         builder = builder.status(StatusCode::SWITCHING_PROTOCOLS);
-        if value.subprotocol.is_some() {
-            builder = builder.header(hyper::header::SEC_WEBSOCKET_PROTOCOL, value.subprotocol.unwrap())
-        };
+        if let Some(subprotocol) = value.subprotocol {
+            builder = builder.header(
+                hyper::header::SEC_WEBSOCKET_PROTOCOL,
+                subprotocol,
+            );
+        }
         for (bytes_key, bytes_value) in value.headers.into_iter() {
             builder = builder.header(bytes_key.to_vec(), bytes_value.to_vec());
         }
@@ -144,14 +151,16 @@ impl TryFrom<WebsocketCloseEvent> for ConnectResponse {
     type Error = ArasError;
 
     fn try_from(value: WebsocketCloseEvent) -> Result<Self, Self::Error> {
-        let body = Full::new(value.reason.into()).map_err(|never| match never {}).boxed();
+        let body = Full::new(value.reason.into())
+            .map_err(|never| match never {})
+            .boxed();
         let mut builder = http::Response::builder();
         builder = builder.status(StatusCode::FORBIDDEN);
         Ok(Self::Close(builder.body(body)?))
     }
 }
 
-struct Context<S, R, W> 
+struct Context<S, R, W>
 where
     W: AsyncRead + AsyncWrite + Unpin,
     S: SendToASGIApp,
@@ -163,7 +172,7 @@ where
     websocket: FragmentCollector<W>,
 }
 
-impl<S, R, W> Context<S, R, W> 
+impl<S, R, W> Context<S, R, W>
 where
     W: AsyncRead + AsyncWrite + Unpin,
     S: SendToASGIApp,
@@ -192,12 +201,12 @@ enum State {
 }
 
 impl State {
-    pub async fn on_event<W, S, R>(&self, event: Event, ctx: &mut Context<S, R, W>) -> Self 
+    pub async fn on_event<W, S, R>(&self, event: Event, ctx: &mut Context<S, R, W>) -> Self
     where
         W: AsyncRead + AsyncWrite + Unpin,
         S: SendToASGIApp,
         R: ReceiveFromASGIApp,
-    {   
+    {
         if let Self::Closed = self {
             return Self::Closed;
         }
@@ -209,7 +218,11 @@ impl State {
         }
     }
 
-    async fn on_frame_received<W, S, R>(&self, frame: ASGIReceiveEvent, ctx: &mut Context<S, R, W>) -> Self 
+    async fn on_frame_received<W, S, R>(
+        &self,
+        frame: ASGIReceiveEvent,
+        ctx: &mut Context<S, R, W>,
+    ) -> Self
     where
         W: AsyncRead + AsyncWrite + Unpin,
         S: SendToASGIApp,
@@ -225,7 +238,11 @@ impl State {
         }
     }
 
-    async fn on_asgi_received<W, S, R>(&self, asgi: ASGISendEvent, ctx: &mut Context<S, R, W>) -> Self 
+    async fn on_asgi_received<W, S, R>(
+        &self,
+        asgi: ASGISendEvent,
+        ctx: &mut Context<S, R, W>,
+    ) -> Self
     where
         W: AsyncRead + AsyncWrite + Unpin,
         S: SendToASGIApp,
@@ -233,40 +250,47 @@ impl State {
     {
         let ws_send = match asgi {
             ASGISendEvent::WebsocketSend(msg) => msg,
-            ASGISendEvent::WebsocketClose(msg) => return self.close(msg.code, msg.reason, ctx).await,
-            _ => return self.on_error(ArasError::unexpected_asgi_message(Arc::new(asgi)), ctx).await,
+            ASGISendEvent::WebsocketClose(msg) => {
+                return self.close(msg.code, msg.reason, ctx).await
+            }
+            _ => {
+                return self
+                    .on_error(ArasError::unexpected_asgi_message(Arc::new(asgi)), ctx)
+                    .await
+            }
         };
 
         let mut frames = ctx.frame_builder.build(ws_send);
-        
+
         while let Some(frame) = frames.pop_front() {
             if let Err(e) = ctx.websocket.write_frame(frame).await {
                 return self.on_error(e.into(), ctx).await;
             }
-        };
-        
+        }
+
         Self::Running
     }
 
-    async fn on_error<W, S, R>(&self, error: ArasError, ctx: &mut Context<S, R, W>) -> Self 
+    async fn on_error<W, S, R>(&self, error: ArasError, ctx: &mut Context<S, R, W>) -> Self
     where
         W: AsyncRead + AsyncWrite + Unpin,
         S: SendToASGIApp,
         R: ReceiveFromASGIApp,
     {
         error!("Error during websocket connection: {}", error);
-        self.close(CloseCode::Error.into(), "Internal server error".into(), ctx).await
+        self.close(CloseCode::Error.into(), "Internal server error".into(), ctx)
+            .await
     }
 
-    async fn close<W, S, R>(&self, code: u16, msg: String, ctx: &mut Context<S, R, W>) -> Self 
-    where 
+    async fn close<W, S, R>(&self, code: u16, msg: String, ctx: &mut Context<S, R, W>) -> Self
+    where
         W: AsyncRead + AsyncWrite + Unpin,
         S: SendToASGIApp,
         R: ReceiveFromASGIApp,
     {
         info!("Closing websocket with code {code}");
-        let frame = Frame::close(code.into(), msg.as_bytes());
-        let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(code.into(), msg.into());
+        let frame = Frame::close(code, msg.as_bytes());
+        let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(code, msg);
         let _ = ctx.websocket.write_frame(frame).await;
         let _ = ctx.send_to_app.send(asgi_event).await;
         Self::Closed
@@ -300,7 +324,7 @@ impl From<StdResult<Frame<'_>, WebSocketError>> for Event {
     fn from(value: StdResult<Frame<'_>, WebSocketError>) -> Self {
         match value {
             Ok(frame) => Self::from(frame),
-            Err(e) => Self::ErrorOccurred(e.into())
+            Err(e) => Self::ErrorOccurred(e.into()),
         }
     }
 }
@@ -310,8 +334,8 @@ impl From<Frame<'_>> for Event {
         let bytes = match value.payload {
             Payload::Bytes(b) => Some(Bytes::from(b)),
             Payload::Owned(b) => Some(Bytes::from(b)),
-            Payload::Borrowed(b) => Some(Bytes::copy_from_slice(b).into()),
-            Payload::BorrowedMut(b) => Some(Bytes::copy_from_slice(b).into()),
+            Payload::Borrowed(b) => Some(Bytes::copy_from_slice(b)),
+            Payload::BorrowedMut(b) => Some(Bytes::copy_from_slice(b)),
         };
 
         match value.opcode {
@@ -328,7 +352,10 @@ impl From<Frame<'_>> for Event {
             OpCode::Close => {
                 let data = bytes.unwrap_or(Bytes::new());
                 let text = String::from_utf8_lossy(&data);
-                let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(CloseCode::Normal.into(), text.into());
+                let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(
+                    CloseCode::Normal.into(),
+                    text.into(),
+                );
                 Self::FrameReceived(asgi_event)
             }
             op_code => {
@@ -350,12 +377,16 @@ impl From<ArasResult<ASGISendEvent>> for Event {
 impl From<ASGISendEvent> for Event {
     fn from(value: ASGISendEvent) -> Self {
         match value {
-            ASGISendEvent::WebsocketSend(msg) => Self::ASGIEventReceived(ASGISendEvent::WebsocketSend(msg)),
-            ASGISendEvent::WebsocketClose(msg) => Self::ASGIEventReceived(ASGISendEvent::WebsocketClose(msg)),
+            ASGISendEvent::WebsocketSend(msg) => {
+                Self::ASGIEventReceived(ASGISendEvent::WebsocketSend(msg))
+            }
+            ASGISendEvent::WebsocketClose(msg) => {
+                Self::ASGIEventReceived(ASGISendEvent::WebsocketClose(msg))
+            }
             event => Self::ErrorOccurred(ArasError::unexpected_asgi_message(Arc::new(event))),
         }
     }
-}  
+}
 
 #[derive(Constructor)]
 struct FrameBuilder {
@@ -395,7 +426,12 @@ impl FrameBuilder {
 
         if frame_count > 2 {
             for chunk in chunks.iter().skip(1).take(frame_count - 2) {
-                let frame = Frame::new(false, OpCode::Continuation, None, Payload::Owned(chunk.to_vec()));
+                let frame = Frame::new(
+                    false,
+                    OpCode::Continuation,
+                    None,
+                    Payload::Owned(chunk.to_vec()),
+                );
                 frames.push_back(frame);
             }
         }
@@ -432,7 +468,10 @@ impl FrameBuilder {
     }
 }
 
-fn merge_responses(app_response: Response, upgrade_response: http::Response<Empty<Bytes>>) -> ArasResult<Response> {
+fn merge_responses(
+    app_response: Response,
+    upgrade_response: http::Response<Empty<Bytes>>,
+) -> ArasResult<Response> {
     let mut merged_response = http::Response::builder().status(upgrade_response.status());
     for (k, v) in upgrade_response.headers() {
         merged_response = merged_response.header(k, v);
@@ -446,8 +485,8 @@ fn merge_responses(app_response: Response, upgrade_response: http::Response<Empt
 
 #[cfg(test)]
 mod test_utils {
+    use crate::mocks::stream::MockWebsocketStream;
     use fastwebsockets::{FragmentCollector, Role, WebSocket};
-    use crate::mocks::stream::MockWebsocketStream;  
 
     pub fn build_websocket_client(
         messages: Option<Vec<&str>>,
@@ -467,13 +506,8 @@ mod test_utils {
 #[cfg(test)]
 mod test_state_transitions {
     use asgispec::prelude::*;
-    
-    use super::{
-        Event,
-        State,
-        Context,
-        test_utils::build_websocket_client,
-    };
+
+    use super::{test_utils::build_websocket_client, Context, Event, State};
     use crate::mocks::communication::{DeterministicReceiveFromApp, SendToAppCollector};
 
     #[tokio::test]
@@ -483,7 +517,10 @@ mod test_state_transitions {
         let receive_from = DeterministicReceiveFromApp::new(vec![]);
 
         let state = State::Running;
-        let event = Event::ASGIEventReceived(ASGISendEvent::new_websocket_send(None, Some("hello".into())));
+        let event = Event::ASGIEventReceived(ASGISendEvent::new_websocket_send(
+            None,
+            Some("hello".into()),
+        ));
         let mut context = Context::new(1024, send_to, receive_from, ws);
 
         let new_state = state.on_event(event, &mut context).await;
@@ -501,7 +538,10 @@ mod test_state_transitions {
         let receive_from = DeterministicReceiveFromApp::new(vec![]);
 
         let state = State::Running;
-        let event = Event::FrameReceived(ASGIReceiveEvent::new_websocket_receive(None, Some("frame".into())));
+        let event = Event::FrameReceived(ASGIReceiveEvent::new_websocket_receive(
+            None,
+            Some("frame".into()),
+        ));
         let mut context = Context::new(1024, send_to.clone(), receive_from, ws);
 
         let new_state = state.on_event(event, &mut context).await;
@@ -509,7 +549,9 @@ mod test_state_transitions {
         assert!(matches!(new_state, State::Running));
         let send_to_app = send_to.get_messages().await;
         assert!(send_to_app.len() == 1);
-        assert!(send_to_app[0] == ASGIReceiveEvent::new_websocket_receive(None, Some("frame".into())));
+        assert!(
+            send_to_app[0] == ASGIReceiveEvent::new_websocket_receive(None, Some("frame".into()))
+        );
     }
 
     #[tokio::test]
@@ -530,7 +572,10 @@ mod test_state_transitions {
         assert!(written_to_stream.len() == 1);
         assert!(written_to_stream[0].contains("Internal server error"));
         assert!(send_to_app.len() == 1);
-        assert!(matches!(send_to_app[0], ASGIReceiveEvent::WebsocketDisconnect(_)));
+        assert!(matches!(
+            send_to_app[0],
+            ASGIReceiveEvent::WebsocketDisconnect(_)
+        ));
     }
 
     #[tokio::test]
@@ -540,7 +585,10 @@ mod test_state_transitions {
         let receive_from = DeterministicReceiveFromApp::new(vec![]);
 
         let state = State::Running;
-        let event = Event::FrameReceived(ASGIReceiveEvent::new_websocket_disconnect(1000, "goodbye".into()));
+        let event = Event::FrameReceived(ASGIReceiveEvent::new_websocket_disconnect(
+            1000,
+            "goodbye".into(),
+        ));
         let mut context = Context::new(1024, send_to.clone(), receive_from, ws);
 
         let new_state = state.on_event(event, &mut context).await;
@@ -551,7 +599,10 @@ mod test_state_transitions {
         assert!(written_to_stream.len() == 1);
         assert!(written_to_stream[0].contains("goodbye"));
         assert!(send_to_app.len() == 1);
-        assert!(matches!(send_to_app[0], ASGIReceiveEvent::WebsocketDisconnect(_)));
+        assert!(matches!(
+            send_to_app[0],
+            ASGIReceiveEvent::WebsocketDisconnect(_)
+        ));
     }
 
     #[tokio::test]
@@ -561,7 +612,8 @@ mod test_state_transitions {
         let receive_from = DeterministicReceiveFromApp::new(vec![]);
 
         let state = State::Running;
-        let event = Event::ASGIEventReceived(ASGISendEvent::new_websocket_close(1000, "goodbye".into()));
+        let event =
+            Event::ASGIEventReceived(ASGISendEvent::new_websocket_close(1000, "goodbye".into()));
         let mut context = Context::new(1024, send_to.clone(), receive_from, ws);
 
         let new_state = state.on_event(event, &mut context).await;
@@ -572,7 +624,10 @@ mod test_state_transitions {
         assert!(written_to_stream.len() == 1);
         assert!(written_to_stream[0].contains("goodbye"));
         assert!(send_to_app.len() == 1);
-        assert!(matches!(send_to_app[0], ASGIReceiveEvent::WebsocketDisconnect(_)));
+        assert!(matches!(
+            send_to_app[0],
+            ASGIReceiveEvent::WebsocketDisconnect(_)
+        ));
     }
 
     #[tokio::test]
@@ -582,7 +637,8 @@ mod test_state_transitions {
         let receive_from = DeterministicReceiveFromApp::new(vec![]);
 
         let state = State::Closed;
-        let event = Event::ASGIEventReceived(ASGISendEvent::new_websocket_close(1000, "goodbye".into()));
+        let event =
+            Event::ASGIEventReceived(ASGISendEvent::new_websocket_close(1000, "goodbye".into()));
         let mut context = Context::new(1024, send_to.clone(), receive_from, ws);
 
         let new_state = state.on_event(event, &mut context).await;
@@ -597,21 +653,15 @@ mod test_state_transitions {
 
 #[cfg(test)]
 mod test_handler {
-    use super::{
-        WebsocketHandler,
-        Context,
-        State,
-        Event,
-        test_utils::build_websocket_client,
-    };
+    use super::{test_utils::build_websocket_client, Context, Event, State, WebsocketHandler};
 
     use std::time::Duration;
     use std::vec;
 
     use asgispec::prelude::*;
     use bytes::Bytes;
-    use tokio::io::{AsyncRead, AsyncWrite};
     use http::Request;
+    use tokio::io::{AsyncRead, AsyncWrite};
 
     use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
     use crate::mocks::communication::{DeterministicReceiveFromApp, SendToAppCollector};
@@ -644,8 +694,14 @@ mod test_handler {
         let (stream, ws) = build_websocket_client(None);
         let send_to = SendToAppCollector::new();
         let receive_from = DeterministicReceiveFromApp::new(vec![
-            Ok(ASGISendEvent::new_websocket_send(None, Some("hello client".into()))),
-            Ok(ASGISendEvent::new_websocket_send(None, Some("im the server".into()))),
+            Ok(ASGISendEvent::new_websocket_send(
+                None,
+                Some("hello client".into()),
+            )),
+            Ok(ASGISendEvent::new_websocket_send(
+                None,
+                Some("im the server".into()),
+            )),
             Ok(ASGISendEvent::new_websocket_close(1000, "goodbye".into())),
         ]);
 
@@ -660,7 +716,10 @@ mod test_handler {
 
         let send_to_app = send_to.get_messages().await;
         assert!(send_to_app.len() == 1);
-        assert!(matches!(send_to_app[0], ASGIReceiveEvent::WebsocketDisconnect(_)));
+        assert!(matches!(
+            send_to_app[0],
+            ASGIReceiveEvent::WebsocketDisconnect(_)
+        ));
     }
 
     #[tokio::test]
@@ -695,8 +754,14 @@ mod test_handler {
 
         let send_to_app = send_to.get_messages().await;
         assert!(send_to_app.len() == 3);
-        assert!(send_to_app[0] == ASGIReceiveEvent::new_websocket_receive(None, Some("hello server".into())));
-        assert!(send_to_app[1] == ASGIReceiveEvent::new_websocket_receive(None, Some("im the client".into())));
+        assert!(
+            send_to_app[0]
+                == ASGIReceiveEvent::new_websocket_receive(None, Some("hello server".into()))
+        );
+        assert!(
+            send_to_app[1]
+                == ASGIReceiveEvent::new_websocket_receive(None, Some("im the client".into()))
+        );
     }
 
     #[tokio::test]
@@ -705,8 +770,9 @@ mod test_handler {
         let request = build_websocket_request();
 
         let send_to = SendToAppCollector::new();
-        let receive_from =
-            DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(None, vec![]))]);
+        let receive_from = DeterministicReceiveFromApp::new(vec![Ok(
+            ASGISendEvent::new_websocket_accept(None, vec![]),
+        )]);
 
         let response = handler.handle(send_to, receive_from, request).await;
 
@@ -726,10 +792,11 @@ mod test_handler {
         let request = build_websocket_request();
 
         let send_to = SendToAppCollector::new();
-        let receive_from = DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(
-            None,
-            vec![(Bytes::from("X-Custom-Header"), Bytes::from("CustomValue"))],
-        ))]);
+        let receive_from =
+            DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(
+                None,
+                vec![(Bytes::from("X-Custom-Header"), Bytes::from("CustomValue"))],
+            ))]);
 
         let response = handler.handle(send_to, receive_from, request).await;
 
@@ -747,10 +814,14 @@ mod test_handler {
         let request = build_websocket_request();
 
         let send_to = SendToAppCollector::new();
-        let receive_from = DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(
-            None,
-            vec![(Bytes::from("sec-websocket-accept"), Bytes::from("CustomValue"))],
-        ))]);
+        let receive_from =
+            DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_websocket_accept(
+                None,
+                vec![(
+                    Bytes::from("sec-websocket-accept"),
+                    Bytes::from("CustomValue"),
+                )],
+            ))]);
 
         let response = handler.handle(send_to, receive_from, request).await;
 

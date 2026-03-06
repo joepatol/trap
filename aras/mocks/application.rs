@@ -9,7 +9,9 @@ pub struct TestError(String);
 
 impl From<&str> for TestError {
     fn from(value: &str) -> Self {
-        Self { 0: value.to_string() }
+        Self {
+            0: value.to_string(),
+        }
     }
 }
 
@@ -28,7 +30,9 @@ impl std::fmt::Display for TestError {
 
 impl From<Box<dyn std::error::Error>> for TestError {
     fn from(value: Box<dyn std::error::Error>) -> Self {
-        Self { 0: value.to_string() }
+        Self {
+            0: value.to_string(),
+        }
     }
 }
 
@@ -116,7 +120,12 @@ impl ASGIApplication for ImmediateReturnApp {
     type Error = TestError;
     type State = MockState;
 
-    async fn call(&self, _scope: Scope<MockState>, _receive: ReceiveFn, _send: SendFn) -> Result<(), Self::Error> {
+    async fn call(
+        &self,
+        _scope: Scope<MockState>,
+        _receive: ReceiveFn,
+        _send: SendFn,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -128,7 +137,12 @@ impl ASGIApplication for ImmediateErrorApp {
     type Error = TestError;
     type State = MockState;
 
-    async fn call(&self, _scope: Scope<Self::State>, _receive: ReceiveFn, _send: SendFn) -> Result<(), Self::Error> {
+    async fn call(
+        &self,
+        _scope: Scope<Self::State>,
+        _receive: ReceiveFn,
+        _send: SendFn,
+    ) -> Result<(), Self::Error> {
         Err(TestError {
             0: "Immediate error".into(),
         })
@@ -142,7 +156,12 @@ impl ASGIApplication for ErrorApp {
     type Error = TestError;
     type State = MockState;
 
-    async fn call(&self, _scope: Scope<Self::State>, receive: ReceiveFn, send: SendFn) -> Result<(), Self::Error> {
+    async fn call(
+        &self,
+        _scope: Scope<Self::State>,
+        receive: ReceiveFn,
+        send: SendFn,
+    ) -> Result<(), Self::Error> {
         _ = (receive)().await;
         _ = (send)(ASGISendEvent::new_startup_complete()).await;
         Err(TestError { 0: "Oops".into() })

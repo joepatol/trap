@@ -1,6 +1,5 @@
-from click.testing import CliRunner
-
 from aras.cli import cli
+from click.testing import CliRunner
 
 
 def test_cli_serve() -> None:

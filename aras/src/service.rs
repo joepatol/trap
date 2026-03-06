@@ -81,12 +81,17 @@ where
     fn call(&mut self, request: Request<B>) -> Self::Future {
         let timeout = Duration::from_secs(self.asgi_timeout_secs);
         if is_upgrade_request(&request) {
-            let scope = self.scope_factory.build_websocket(&self.connection, &request);
+            let scope = self
+                .scope_factory
+                .build_websocket(&self.connection, &request);
             let (send_to_app, receive_from_app) = self.communication_factory.build(scope);
             let handler = WebsocketHandler::new(
                 timeout,
                 self.max_ws_frame_size,
-                format!("{}:{}", &self.connection.client_ip, self.connection.client_port),
+                format!(
+                    "{}:{}",
+                    &self.connection.client_ip, self.connection.client_port
+                ),
             );
             let fut = handler.handle(send_to_app, receive_from_app, request);
             Box::pin(handle_error(fut))
@@ -114,7 +119,7 @@ async fn handle_error(fut: impl Future<Output = ArasResult<Response>>) -> ArasRe
                 .header(hyper::header::CONTENT_LENGTH, body_text.len())
                 .header(hyper::header::CONTENT_TYPE, "text/plain")
                 .body(body);
-            Ok(response.map_err(|e| Arc::new(e))?)
+            Ok(response.map_err(Arc::new)?)
         }
     }
 }

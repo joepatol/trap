@@ -1,6 +1,6 @@
+use std::fmt::{Debug, Display};
 use std::io;
 use std::sync::Arc;
-use std::fmt::{Debug, Display};
 
 use thiserror::Error;
 
@@ -36,8 +36,8 @@ pub enum Error {
     WebsocketError(#[from] Arc<fastwebsockets::WebSocketError>),
 
     #[error("Application error: {msg}")]
-    ApplicationError { 
-        msg: Arc<dyn DebugDisplay + Send + Sync> 
+    ApplicationError {
+        msg: Arc<dyn DebugDisplay + Send + Sync>,
     },
 
     #[error("Application is not running")]

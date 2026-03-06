@@ -3,8 +3,9 @@ import os
 import sys
 
 import click
-from .types import LogLevel
+
 from .serve import serve as serve_app
+from .types import LogLevel
 
 
 @click.group()
@@ -13,7 +14,7 @@ def cli() -> None:
 
 
 @cli.command()
-@click.argument('application', type=click.STRING)
+@click.argument("application", type=click.STRING)
 @click.option(
     "--host",
     type=str,
@@ -117,7 +118,7 @@ def serve(
             "Did you provide an import string like 'my_app.main:app'?"
             "Make sure you provided a valid path from the current working directory."
         ) from exc
-    
+
     serve_app(
         loaded_app,
         host,
@@ -130,5 +131,5 @@ def serve(
         rate_limit,
         buffer_size,
         backpressure_timeout,
-        max_ws_frame_size
+        max_ws_frame_size,
     )

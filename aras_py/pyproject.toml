@@ -28,8 +28,10 @@ features = ["pyo3/extension-module"]
 dev = [
     "pytest",
     "pytest-asyncio",
-    "mypy",
+    "ruff",
     "httpx",
+    "mypy",
+    "isort",
     "pytest-timeout",
     "maturin",
     "fastapi",

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse, PlainTextResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 
 router = APIRouter()
 

@@ -1,19 +1,14 @@
 import os
-from pathlib import Path
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
-from fastapi.responses import Response, JSONResponse, FileResponse
-from fastapi.middleware.cors import CORSMiddleware
-from . import db_models
-from .database import engine
+from pathlib import Path
 
-from . import basic
-from . import ws
-from . import files
-from . import notes
-from . import templates
-from . import stream
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
+
+from . import basic, db_models, files, notes, stream, templates, ws
+from .database import engine
 
 HERE = Path(os.path.dirname(os.path.abspath(__file__)))
 

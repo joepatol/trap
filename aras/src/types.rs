@@ -1,13 +1,13 @@
+use std::future::Future;
 /// Core types used in ARAS
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::future::Future;
 
 use bytes::Bytes;
-use hyper::body::Incoming;
 use http::Request as HTTPRequest;
 use http::Response as HTTPResponse;
 use http_body_util::combinators::BoxBody;
+use hyper::body::Incoming;
 
 use crate::{ArasError, ArasResult};
 
@@ -44,6 +44,10 @@ pub type ServiceFuture = Pin<Box<dyn Future<Output = ArasResult<Response>> + Sen
 
 impl<T> ResponseStatus for HTTPResponse<T> {
     fn status_string(&self) -> String {
-        format!("{} {}", self.status().as_str().to_owned(), self.status().canonical_reason().unwrap_or(""))
+        format!(
+            "{} {}",
+            self.status().as_str().to_owned(),
+            self.status().canonical_reason().unwrap_or("")
+        )
     }
 }

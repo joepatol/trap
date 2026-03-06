@@ -9,11 +9,14 @@ use log::error;
 use tokio::sync::oneshot::{self, Receiver as OneshotReceiver};
 use tokio::sync::{Mutex, RwLock};
 
-use crate::{ArasResult, ArasError};
+use crate::{ArasError, ArasResult};
 
 /// Handle to send ASGI messages to an application
 pub(crate) trait SendToASGIApp: Send + Sync {
-    fn send(&mut self, message: ASGIReceiveEvent) -> impl Future<Output = ArasResult<()>> + Send + Sync;
+    fn send(
+        &mut self,
+        message: ASGIReceiveEvent,
+    ) -> impl Future<Output = ArasResult<()>> + Send + Sync;
 }
 
 /// Handle to receive ASGI messages from an application
@@ -106,7 +109,7 @@ pub(crate) struct SendToApp {
 
 impl SendToASGIApp for SendToApp {
     async fn send(&mut self, message: ASGIReceiveEvent) -> ArasResult<()> {
-        if let Ok(_) = self.sender.send(message).await {
+        if self.sender.send(message).await.is_ok() {
             Ok(())
         } else {
             Err(self.handle.wait_for_completion().await)
@@ -283,7 +286,9 @@ mod tests {
 
         let result = receive_from_app.receive().await;
 
-        assert!(result.is_err_and(|e| { e.to_string() == "Application error: TestError(\"Immediate error\")" }));
+        assert!(result.is_err_and(|e| {
+            e.to_string() == "Application error: TestError(\"Immediate error\")"
+        }));
     }
 
     #[tokio::test]
@@ -298,7 +303,9 @@ mod tests {
         let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
 
         let recv_result = receive_from_app.receive().await;
-        let send_result = send_to_app.send(ASGIReceiveEvent::new_lifespan_shutdown()).await;
+        let send_result = send_to_app
+            .send(ASGIReceiveEvent::new_lifespan_shutdown())
+            .await;
 
         assert!(recv_result.is_err());
         assert!(send_result.is_err());
@@ -315,7 +322,9 @@ mod tests {
 
         let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
 
-        let send_result = send_to_app.send(ASGIReceiveEvent::new_lifespan_shutdown()).await;
+        let send_result = send_to_app
+            .send(ASGIReceiveEvent::new_lifespan_shutdown())
+            .await;
         let recv_result = receive_from_app.receive().await;
 
         assert!(recv_result.is_err());
@@ -337,7 +346,9 @@ mod tests {
         // To make sure the app is able to send it's result before send is called we yield to the scheduler
         tokio::task::yield_now().await;
 
-        let send_result = send_to_app.send(ASGIReceiveEvent::new_lifespan_shutdown()).await;
+        let send_result = send_to_app
+            .send(ASGIReceiveEvent::new_lifespan_shutdown())
+            .await;
         let recv_result = receive_from_app.receive().await;
 
         assert!(recv_result.is_err());
@@ -361,11 +372,15 @@ mod tests {
         assert!(result.is_err_and(|e| { e.to_string() == "Application is not running" }));
         let result = receive_from_app.receive().await;
         assert!(result.is_err_and(|e| { e.to_string() == "Application is not running" }));
-        let result = send_to_app.send(ASGIReceiveEvent::new_lifespan_startup()).await;
+        let result = send_to_app
+            .send(ASGIReceiveEvent::new_lifespan_startup())
+            .await;
         assert!(result.is_err_and(|e| { e.to_string() == "Application is not running" }));
         let result = receive_from_app.receive().await;
         assert!(result.is_err_and(|e| { e.to_string() == "Application is not running" }));
-        let result = send_to_app.send(ASGIReceiveEvent::new_http_disconnect()).await;
+        let result = send_to_app
+            .send(ASGIReceiveEvent::new_http_disconnect())
+            .await;
         assert!(result.is_err_and(|e| { e.to_string() == "Application is not running" }));
     }
 
@@ -380,10 +395,14 @@ mod tests {
 
         let (mut send_to_app, mut receive_from_app) = comm_factory.build(scope);
 
-        let send1 = send_to_app.send(ASGIReceiveEvent::new_lifespan_startup()).await;
+        let send1 = send_to_app
+            .send(ASGIReceiveEvent::new_lifespan_startup())
+            .await;
         let recv1 = receive_from_app.receive().await;
 
-        let send2 = send_to_app.send(ASGIReceiveEvent::new_lifespan_shutdown()).await;
+        let send2 = send_to_app
+            .send(ASGIReceiveEvent::new_lifespan_shutdown())
+            .await;
         let recv2 = receive_from_app.receive().await;
 
         assert!(send1.is_ok());

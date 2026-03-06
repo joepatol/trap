@@ -1,14 +1,13 @@
-import time
 import multiprocessing
+import time
 from typing import AsyncGenerator, Generator
 
-import pytest
-import httpx
-import pytest_asyncio
 import aras
+import httpx
+import pytest
+import pytest_asyncio
 
 from .utils.application.main import app as asgi_app
-
 
 HOST = "127.0.0.1"
 PORT = 8080
@@ -26,7 +25,7 @@ def _run_server_process() -> None:
 def run_application_with_server() -> Generator[None, None, None]:
     # Start a new Python process to run the ARAS ASGI server with an
     # application
-    process= multiprocessing.Process(
+    process = multiprocessing.Process(
         target=_run_server_process,
         daemon=True,
     )

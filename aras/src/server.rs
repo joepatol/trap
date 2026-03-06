@@ -15,11 +15,11 @@ use tower_http::trace::TraceLayer;
 use tower_http::ServiceBuilderExt;
 
 use super::communication::CommunicationFactory;
-use super::ArasResult;
 use super::protocols::LifespanHandler;
 use super::scope::ScopeFactory;
 use super::service::ArasASGIService;
 use super::types::{ConnectionInfo, Request, ResponseStatus};
+use super::ArasResult;
 
 /// The Aras server implementation
 ///
@@ -103,7 +103,9 @@ impl ArasServer {
     ) -> ArasResult<()> {
         let keep_alive = self.keep_alive;
         let socket_addr = SocketAddr::new(self.addr, self.port);
-        let listener = TcpListener::bind(socket_addr).await.expect("Failed to bind socket");
+        let listener = TcpListener::bind(socket_addr)
+            .await
+            .expect("Failed to bind socket");
         info!("Listening on http://{}", socket_addr);
 
         loop {
@@ -125,9 +127,11 @@ impl ArasServer {
                         .on_request(|req: &Request, _span: &tracing::Span| {
                             info!("Processing request: {} {}", req.method(), req.uri().path())
                         })
-                        .on_response(|res: &http::Response<_>, _latency: Duration, _span: &tracing::Span| {
-                            info!("Response sent: {}", res.status_string())
-                        }),
+                        .on_response(
+                            |res: &http::Response<_>, _latency: Duration, _span: &tracing::Span| {
+                                info!("Response sent: {}", res.status_string())
+                            },
+                        ),
                 )
                 .layer(CompressionLayer::new())
                 .request_body_limit(self.body_limit)
@@ -158,7 +162,10 @@ impl ArasServer {
     }
 }
 
-async fn log_hyper_error(client: SocketAddr, conn: impl Future<Output = std::result::Result<(), hyper::Error>>) {
+async fn log_hyper_error(
+    client: SocketAddr,
+    conn: impl Future<Output = std::result::Result<(), hyper::Error>>,
+) {
     if let Err(e) = conn.await {
         if e.is_closed() | e.is_canceled() {
             error!("Connection closed by client: {}. \n {}", client, e);

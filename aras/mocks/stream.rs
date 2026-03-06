@@ -25,10 +25,10 @@ impl MockWebsocketStream {
     pub fn new(messages: Vec<&str>) -> MockWebsocketStream {
         let written = Arc::new(Mutex::new(Vec::new()));
         let mut data_buffer = VecDeque::new();
-        
+
         for message in messages.into_iter() {
             data_buffer.push_back(create_frame(message));
-        };
+        }
         data_buffer.push_back(create_close_frame());
 
         MockWebsocketStream {
@@ -53,7 +53,11 @@ impl MockWebsocketStream {
 }
 
 impl AsyncRead for MockWebsocketStream {
-    fn poll_read(self: Pin<&mut Self>, _: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        _: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
         let this = self.get_mut();
 
         let mut guard = this.data_buffer.lock().unwrap();
@@ -70,7 +74,11 @@ impl AsyncRead for MockWebsocketStream {
 }
 
 impl AsyncWrite for MockWebsocketStream {
-    fn poll_write(self: Pin<&mut Self>, _: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        _: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
 
         let mut guard = this.written.lock().unwrap();
