@@ -5,12 +5,11 @@ use std::time::Duration;
 use aras_core::ArasServer;
 use asgispec::prelude::*;
 use log::info;
-use pyo3::exceptions::PyRuntimeError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3_async_runtimes;
 use tokio::runtime::Handle;
-use tokio::sync::Semaphore;
 
 mod convert;
 mod wrappers;
@@ -55,7 +54,10 @@ fn generate_cancel_token() -> PyStopServerToken {
     rate_limit = (1000, 1),
     buffer_size = 1024,
     backpressure_timeout = 60,
+    backpressure_size = 16,
     max_ws_frame_size = 64 * 1024,
+    request_ids = false,
+    sensitive_headers = None,
 ))]
 /// Serves a Python ASGI application using the ARAS server.
 ///
@@ -86,7 +88,10 @@ fn serve_python<'a>(
     rate_limit: (u64, u64),
     buffer_size: usize,
     backpressure_timeout: u64,
+    backpressure_size: usize,
     max_ws_frame_size: usize,
+    request_ids: bool,
+    sensitive_headers: Option<Vec<String>>,
 ) -> PyResult<Bound<'a, PyAny>> {
     tracing_subscriber::fmt()
         .with_max_level(get_log_level_filter(log_level))
@@ -97,19 +102,35 @@ fn serve_python<'a>(
     let task_locals = pyo3_async_runtimes::TaskLocals::new(event_loop).copy_context(py)?;
     let asgi_application = PyASGIAppWrapper::new(application, task_locals.clone());
 
-    let asgi_server = ArasServer::new(
-        cancel_token,
-        addr.into(),
-        port,
-        keep_alive,
-        Duration::from_secs(request_timeout),
-        max_size_kb * 1000,
-        max_concurrency.unwrap_or(Semaphore::MAX_PERMITS),
-        (rate_limit.0, Duration::from_secs(rate_limit.1)),
-        buffer_size,
-        backpressure_timeout,
-        max_ws_frame_size,
-    );
+    let mut builder = ArasServer::builder(cancel_token)
+        .addr(addr.into())
+        .port(port)
+        .keep_alive(keep_alive)
+        .request_timeout(Duration::from_secs(request_timeout))
+        .body_limit(max_size_kb * 1000)
+        .rate_limit(rate_limit.0, rate_limit.1)
+        .buffer_size(buffer_size)
+        .backpressure_timeout(Duration::from_secs(backpressure_timeout))
+        .backpressure_size(backpressure_size)
+        .max_ws_frame_size(max_ws_frame_size);
+
+    if request_ids {
+        builder = builder.request_ids();
+    }
+
+    if let Some(sensitive_headers) = sensitive_headers {
+        for header in sensitive_headers.into_iter() {
+            builder = builder.sensitive_header(header.clone().try_into().map_err(|e|{
+                PyValueError::new_err(format!("Invalid header name '{}'; {}", header, e))
+            })?);
+        }
+    }
+
+    if let Some(limit) = max_concurrency {
+        builder = builder.concurrency_limit(limit);
+    }
+
+    let asgi_server = builder.build();
 
     pyo3_async_runtimes::tokio::future_into_py_with_locals(py, task_locals, async move {
         info!("Started {} workers", Handle::current().metrics().num_workers());

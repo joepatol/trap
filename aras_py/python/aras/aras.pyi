@@ -4,10 +4,12 @@ from typing import Awaitable
 from .types import ASGIApplication, CancelToken, LogLevel
 
 def generate_cancel_token() -> CancelToken: ...
+
 def serve_python(
     application: ASGIApplication,
     token: CancelToken,
     event_loop: asyncio.AbstractEventLoop,
+    *,
     addr: list[int] = [127, 0, 0, 1],
     port: int = 8080,
     keep_alive: bool = True,
@@ -18,5 +20,8 @@ def serve_python(
     rate_limit: tuple[int, int] = (1000, 1),
     buffer_size: int = 1024,
     backpressure_timeout: int = 60,
+    backpressure_size: int = 16,
     max_ws_frame_size: int = 64 * 1024,
+    request_ids: bool = False,
+    sensitive_headers: list[str] | None = None,
 ) -> Awaitable[None]: ...

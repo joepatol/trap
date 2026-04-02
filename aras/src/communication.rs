@@ -117,21 +117,20 @@ impl SendToASGIApp for SendToApp {
     }
 }
 
-const CHANNEL_SIZE: usize = 16;
-
 /// Factory to create communication channels between server and ASGI application.
 /// Provides a method to build 2 handles for sending and receiving ASGI messages to and from the
 /// application, given an ASGI scope.
 #[derive(Constructor, Clone)]
 pub(crate) struct CommunicationFactory<A: ASGIApplication> {
     application: A,
+    backpressure_size: usize,
 }
 
 impl<A: ASGIApplication + 'static> CommunicationFactory<A> {
     /// Build communication channels for the given ASGI scope.
     pub fn build(&self, scope: Scope<A::State>) -> (impl SendToASGIApp, impl ReceiveFromASGIApp) {
-        let (send_to_server, receive_from_app) = channel::bounded(CHANNEL_SIZE);
-        let (send_to_app, receive_from_server) = channel::bounded(CHANNEL_SIZE);
+        let (send_to_server, receive_from_app) = channel::bounded(self.backpressure_size);
+        let (send_to_app, receive_from_server) = channel::bounded(self.backpressure_size);
         let (result_producer, result_consumer) = oneshot::channel();
 
         let send_closure = move |message: ASGISendEvent| -> SendFuture {
@@ -192,7 +191,7 @@ mod tests {
         let app = LifespanProtocolApp::new();
         let state = MockState::new();
 
-        let comm_factory = CommunicationFactory::new(app);
+        let comm_factory = CommunicationFactory::new(app, 16);
         let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
@@ -210,7 +209,7 @@ mod tests {
         let app = LifespanProtocolApp::new();
         let state = MockState::new();
 
-        let comm_factory = CommunicationFactory::new(app);
+        let comm_factory = CommunicationFactory::new(app, 16);
         let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
@@ -228,7 +227,7 @@ mod tests {
         let app = ImmediateReturnApp::new();
         let state = MockState::new();
 
-        let comm_factory = CommunicationFactory::new(app);
+        let comm_factory = CommunicationFactory::new(app, 16);
         let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
@@ -245,7 +244,7 @@ mod tests {
         let app = ImmediateReturnApp::new();
         let state = MockState::new();
 
-        let comm_factory = CommunicationFactory::new(app);
+        let comm_factory = CommunicationFactory::new(app, 16);
         let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
@@ -261,7 +260,7 @@ mod tests {
         let app = ImmediateErrorApp::new();
         let state = MockState::new();
 
-        let comm_factory = CommunicationFactory::new(app);
+        let comm_factory = CommunicationFactory::new(app, 16);
         let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
@@ -278,7 +277,7 @@ mod tests {
         let app = ImmediateErrorApp::new();
         let state = MockState::new();
 
-        let comm_factory = CommunicationFactory::new(app);
+        let comm_factory = CommunicationFactory::new(app, 16);
         let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
@@ -296,7 +295,7 @@ mod tests {
         let app = ImmediateErrorApp::new();
         let state = MockState::new();
 
-        let comm_factory = CommunicationFactory::new(app);
+        let comm_factory = CommunicationFactory::new(app, 16);
         let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
@@ -316,7 +315,7 @@ mod tests {
         let app = ImmediateErrorApp::new();
         let state = MockState::new();
 
-        let comm_factory = CommunicationFactory::new(app);
+        let comm_factory = CommunicationFactory::new(app, 16);
         let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
@@ -336,7 +335,7 @@ mod tests {
         let app = ImmediateErrorApp::new();
         let state = MockState::new();
 
-        let comm_factory = CommunicationFactory::new(app);
+        let comm_factory = CommunicationFactory::new(app, 16);
         let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
@@ -360,7 +359,7 @@ mod tests {
         let app = ImmediateReturnApp::new();
         let state = MockState::new();
 
-        let comm_factory = CommunicationFactory::new(app);
+        let comm_factory = CommunicationFactory::new(app, 16);
         let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 
@@ -389,7 +388,7 @@ mod tests {
         let app = ErrorApp::new();
         let state = MockState::new();
 
-        let comm_factory = CommunicationFactory::new(app);
+        let comm_factory = CommunicationFactory::new(app, 16);
         let scope_factory = ScopeFactory::new(state);
         let scope = scope_factory.build_lifespan();
 

@@ -4,13 +4,13 @@ build-backend = "maturin"
 
 [project]
 name = "aras"
+version = "1.0.0"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dynamic = ["version"]
 dependencies = [
     "click >= 8.0.0"
 ]

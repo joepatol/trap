@@ -1,1 +1,1 @@
-workspace = { members = ["aras", "asgispec", "aras_py"] }
+workspace = { members = ["aras", "asgispec", "aras_py"], resolver = "2"}

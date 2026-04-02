@@ -66,6 +66,7 @@ wheels = [
 
 [[package]]
 name = "aras"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -127,7 +128,7 @@ requires-dist = [
     { name = "watchfiles", marker = "extra == 'hot-reload'" },
     { name = "websockets", marker = "extra == 'dev'" },
 ]
-provides-extras = ["dev", "hot-reload"]
+provides-extras = ["hot-reload", "dev"]
 
 [[package]]
 name = "backports-asyncio-runner"

@@ -75,6 +75,8 @@ async fn startup_loop(
     receive_from: &mut impl ReceiveFromASGIApp,
     timeout: Duration,
 ) -> ArasResult<bool> {
+    // A send failure means the app closed the channel before consuming the event —
+    // the only reliable signal that lifespan is not implemented.
     if let Err(e) = send_to.send(ASGIReceiveEvent::new_lifespan_startup()).await {
         debug!("Lifespan protocol appears unsupported: {e}");
         return Ok(false);
@@ -82,14 +84,14 @@ async fn startup_loop(
     match tokio::time::timeout(timeout, receive_from.receive()).await {
         Ok(Ok(ASGISendEvent::StartupComplete(_))) => Ok(true),
         Ok(Ok(ASGISendEvent::StartupFailed(event))) => Err(ArasError::custom(event.message)),
-        Ok(Ok(_)) => {
-            info!("Lifespan protocol appears unsupported (no lifespan event received)");
-            Ok(false)
-        }
-        _ => {
-            info!("Lifespan protocol appears unsupported (error received)");
-            Ok(false)
-        }
+        // The app received the startup event but sent an unrecognised response.
+        Ok(Ok(msg)) => Err(ArasError::unexpected_asgi_message(Arc::new(msg))),
+        // The app received the startup event but exited or errored without responding.
+        Ok(Err(e)) => Err(e),
+        // The app received the startup event but did not respond within the timeout.
+        Err(_) => Err(ArasError::custom(
+            "Application startup timed out".to_string(),
+        )),
     }
 }
 
@@ -168,8 +170,7 @@ mod tests {
 
         let result = handler.startup(send_to, receive_from).await;
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().enabled == false);
+        assert!(result.is_err_and(|e| e.to_string() == "Startup failed"));
     }
 
     #[tokio::test]
@@ -193,20 +194,18 @@ mod tests {
             DeterministicReceiveFromApp::new(vec![Ok(ASGISendEvent::new_shutdown_complete())]);
 
         let result = handler.startup(send_to, receive_from).await;
-        assert!(result.is_ok());
-        assert!(result.unwrap().enabled == false);
+        assert!(result.is_err());
     }
 
     #[tokio::test]
-    async fn test_lifespan_not_supported_timeout() {
+    async fn test_startup_timeout() {
         let handler = LifespanHandler::new(Duration::from_millis(1));
         let send_to = SendToAppCollector::new();
         let receive_from = DeterministicReceiveFromApp::new(vec![]);
 
         let result = handler.startup(send_to, receive_from).await;
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().enabled == false);
+        assert!(result.is_err_and(|e| e.to_string() == "Application startup timed out"));
     }
 
     #[tokio::test]
