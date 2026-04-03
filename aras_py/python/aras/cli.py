@@ -1,4 +1,3 @@
-import importlib
 import os
 import sys
 
@@ -140,33 +139,22 @@ def serve(
     # Insert current working directory to sys.path to make sure the dynamic import,
     # which is referenced from the cwd, works correctly.
     sys.path.insert(0, os.getcwd())
-    module_str, application_str = application.split(":")
-
-    try:
-        module = importlib.import_module(module_str)
-        loaded_app = getattr(module, application_str)
-    except Exception as exc:
-        raise ImportError(
-            "Failed to import ASGI application."
-            "Did you provide an import string like 'my_app.main:app'?"
-            "Make sure you provided a valid path from the current working directory."
-        ) from exc
 
     serve_app(
-        loaded_app,
-        host,
-        port,
-        log_level,
-        not no_keep_alive,
-        max_concurrency,
-        max_size_kb,
-        request_timeout,
-        rate_limit,
-        buffer_size,
-        backpressure_timeout,
-        backpressure_size,
-        max_ws_frame_size,
-        request_ids,
-        sensitive_headers,
-        reload,
+        application,
+        host=host,
+        port=port,
+        log_level=log_level,
+        keep_alive=not no_keep_alive,
+        max_concurrency=max_concurrency,
+        max_size_kb=max_size_kb,
+        request_timeout=request_timeout,
+        rate_limit=rate_limit,
+        buffer_size=buffer_size,
+        backpressure_timeout=backpressure_timeout,
+        backpressure_size=backpressure_size,
+        max_ws_frame_size=max_ws_frame_size,
+        request_ids=request_ids,
+        sensitive_headers=sensitive_headers,
+        reload=reload,
     )

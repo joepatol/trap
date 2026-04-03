@@ -33,7 +33,7 @@ aras serve my_app.main:app
 Install using uv
 
 ```bash
-uv lock && maturin develop --uv
+uv lock && maturin develop --uv --extras dev,hot-reload
 ```
 
 Install using pip

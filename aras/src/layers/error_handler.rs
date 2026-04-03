@@ -12,17 +12,10 @@ use tower::{BoxError, Layer, Service};
 /// Tower layer that intercepts all errors from the inner middleware stack and converts them
 /// into appropriate HTTP responses.
 ///
-/// Without this layer, any `BoxError` that escapes the stack causes hyper to close the TCP
-/// connection, giving clients no actionable feedback.
-///
 /// Error mapping:
 /// - [`tower::load_shed::error::Overloaded`] → `503 Service Unavailable`
 /// - [`tower::timeout::error::Elapsed`]      → `504 Gateway Timeout`
 /// - All other errors                        → `500 Internal Server Error`
-///
-/// On the success path, the inner response body is erased to `UnsyncBoxBody`
-/// (which only requires `Send`, not `Sync`) so that the pass-through and synthesised error
-/// responses share the same concrete type.
 #[derive(Clone, Default)]
 pub(crate) struct ErrorHandlerLayer;
 
