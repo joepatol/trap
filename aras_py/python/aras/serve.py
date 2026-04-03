@@ -3,7 +3,7 @@ import importlib
 import os
 import signal
 import sys
-from typing import overload, Any
+from typing import Any, overload
 
 from .aras import generate_cancel_token, serve_python  # type: ignore
 from .types import ASGIApplication, LogLevel
@@ -91,7 +91,7 @@ def serve(
         _serve_with_reload(import_string, **kwargs)
     else:
         app = _import_from_string(application) if isinstance(application, str) else application
-        _serve(app, **kwargs)
+        _serve(app, **kwargs)  # type: ignore
 
 
 def _resolve_import_string(application: ASGIApplication | str) -> str:
@@ -147,8 +147,8 @@ def _serve_with_reload(import_string: str, **kwargs) -> None:  # type: ignore[no
     )
 
 
-def _files_changed_callback(changed_files: set[tuple[Any, str]]) -> None:
-    changed_files = {f for _, f in changed_files}
+def _files_changed_callback(file_changes: set[tuple[Any, str]]) -> None:
+    changed_files = {f for _, f in file_changes}
     print(f"Files changed: {':'.join(changed_files)}.\nRestarting server...")
 
 

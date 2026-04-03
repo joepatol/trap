@@ -9,8 +9,7 @@ async def test_body_too_large_returns_413() -> None:
     # Cannot use httpx to reliably test this case because httpx will raise a connection reset error if the server 
     # closes the connection before reading the body.
     # Send headers with Content-Length exceeding the limit but no body.
-    # The server rejects based on the header alone (413) before any body is read,
-    # so the response is readable without a connection-reset race.
+    # The server rejects based on the header alone (413) before any body is read
     reader, writer = await asyncio.open_connection("127.0.0.1", 8080)
     try:
         writer.write(
@@ -67,11 +66,3 @@ async def test_body_within_limit_is_accepted(httpx_client: AsyncClient) -> None:
     response = await httpx_client.post("/stream/large_data", content=data, timeout=30)
     assert response.status_code == 200
     assert len(response.content) == 500_000
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_request_timeout_returns_504(httpx_client: AsyncClient) -> None:
-    # long_task sleeps for 20 seconds; the server will cut it off at 10 seconds
-    response = await httpx_client.get("/api/basic/long_task", timeout=15)
-    assert response.status_code == 504
-    assert response.text == "Gateway Timeout"

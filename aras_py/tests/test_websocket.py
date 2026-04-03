@@ -33,6 +33,7 @@ async def test_websocket_multiple_messages() -> None:
 async def test_websocket_accept_headers() -> None:
     url = f"{BASE_URL}/api/chat/ws_echo"
     async with websockets.connect(url) as ws:
+        assert ws.response is not None
         assert ws.response.headers.get("hello") == "world"
 
 
