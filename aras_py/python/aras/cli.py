@@ -104,6 +104,13 @@ def cli() -> None:
     show_default=True,
 )
 @click.option(
+    "--no-auto-date-header",
+    is_flag=True,
+    help="Disable automatic addition of the Date header in responses.",
+    default=False,
+    show_default=True,
+)
+@click.option(
     "--sensitive-headers",
     type=str,
     multiple=True,
@@ -133,8 +140,9 @@ def serve(
     backpressure_size: int,
     max_ws_frame_size: int,
     request_ids: bool,
-    sensitive_headers: list[str] | None,
-    reload: bool,
+    no_auto_date_header: bool,
+    sensitive_headers: list[str] | None = None,
+    reload: bool = False,
 ) -> None:
     # Insert current working directory to sys.path to make sure the dynamic import,
     # which is referenced from the cwd, works correctly.
@@ -155,6 +163,7 @@ def serve(
         backpressure_size=backpressure_size,
         max_ws_frame_size=max_ws_frame_size,
         request_ids=request_ids,
+        auto_date_header=not no_auto_date_header,
         sensitive_headers=sensitive_headers,
         reload=reload,
     )

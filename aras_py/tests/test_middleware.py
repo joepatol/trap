@@ -66,3 +66,9 @@ async def test_body_within_limit_is_accepted(httpx_client: AsyncClient) -> None:
     response = await httpx_client.post("/stream/large_data", content=data, timeout=30)
     assert response.status_code == 200
     assert len(response.content) == 500_000
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_auto_date_header_present_by_default(httpx_client: AsyncClient) -> None:
+    response = await httpx_client.get("/health_check")
+    assert "Date" in response.headers

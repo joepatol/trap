@@ -57,6 +57,7 @@ fn generate_cancel_token() -> PyStopServerToken {
     backpressure_size = 16,
     max_ws_frame_size = 64 * 1024,
     request_ids = false,
+    auto_date_header = true,
     sensitive_headers = None,
 ))]
 /// Serves a Python ASGI application using the ARAS server.
@@ -68,7 +69,7 @@ fn generate_cancel_token() -> PyStopServerToken {
 ///
 /// A cancellation token is also required to allow shutdown of the server from Python, the token can be generated using the `generate_cancel_token` function.
 ///
-/// What you probably want is to create a cancel token, run the awaitable returned by this function using `event_loop.run_until_complete`, and then when 
+/// What you probably want is to create a cancel token, run the awaitable returned by this function using `event_loop.run_until_complete`, and then when
 /// you want to stop the server call `token.stop()` from another thread or signal handler.
 ///
 /// The ARAS Python package will do this ceremony for the user when using `aras.serve` or the CLI. This lower level function is only required when the user requires
@@ -91,6 +92,7 @@ fn serve_python<'a>(
     backpressure_size: usize,
     max_ws_frame_size: usize,
     request_ids: bool,
+    auto_date_header: bool,
     sensitive_headers: Option<Vec<String>>,
 ) -> PyResult<Bound<'a, PyAny>> {
     tracing_subscriber::fmt()
@@ -121,11 +123,17 @@ fn serve_python<'a>(
         builder = builder.no_keep_alive();
     }
 
+    if auto_date_header == false {
+        builder = builder.disable_auto_date_header();
+    }
+
     if let Some(sensitive_headers) = sensitive_headers {
         for header in sensitive_headers.iter() {
-            builder = builder.sensitive_header(header.try_into().map_err(|e|{
-                PyValueError::new_err(format!("Invalid header name '{}'; {}", header, e))
-            })?);
+            builder = builder.sensitive_header(
+                header
+                    .try_into()
+                    .map_err(|e| PyValueError::new_err(format!("Invalid header name '{}'; {}", header, e)))?,
+            );
         }
     }
 

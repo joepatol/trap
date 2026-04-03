@@ -23,5 +23,6 @@ def serve_python(
     backpressure_size: int = 16,
     max_ws_frame_size: int = 64 * 1024,
     request_ids: bool = False,
+    auto_date_header: bool = True,
     sensitive_headers: list[str] | None = None,
 ) -> Awaitable[None]: ...

@@ -25,6 +25,7 @@ def serve(
     backpressure_size: int = ...,
     max_ws_frame_size: int = ...,
     request_ids: bool = ...,
+    auto_date_header: bool = ...,
     sensitive_headers: list[str] | None = ...,
     reload: bool = ...,
 ) -> None: ...
@@ -46,6 +47,7 @@ def serve(
     backpressure_size: int = ...,
     max_ws_frame_size: int = ...,
     request_ids: bool = ...,
+    auto_date_header: bool = ...,
     sensitive_headers: list[str] | None = ...,
     reload: bool = ...,
 ) -> None: ...
@@ -66,6 +68,7 @@ def serve(
     backpressure_size: int = 16,
     max_ws_frame_size: int = 64 * 1024,
     request_ids: bool = False,
+    auto_date_header: bool = True,
     sensitive_headers: list[str] | None = None,
     reload: bool = False,
 ) -> None:
@@ -83,6 +86,7 @@ def serve(
         backpressure_size=backpressure_size,
         max_ws_frame_size=max_ws_frame_size,
         request_ids=request_ids,
+        auto_date_header=auto_date_header,
         sensitive_headers=sensitive_headers,
     )
 
@@ -173,6 +177,7 @@ def _serve(
     backpressure_size: int = 16,
     max_ws_frame_size: int = 64 * 1024,
     request_ids: bool = False,
+    auto_date_header: bool = True,
     sensitive_headers: list[str] | None = None,
 ) -> None:
     loop = asyncio.new_event_loop()
@@ -199,6 +204,7 @@ def _serve(
             backpressure_size=backpressure_size,
             max_ws_frame_size=max_ws_frame_size,
             request_ids=request_ids,
+            auto_date_header=auto_date_header,
             sensitive_headers=sensitive_headers,
         )
     )

@@ -20,8 +20,8 @@ use tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer;
 use tower_http::trace::TraceLayer;
 use tower_http::ServiceBuilderExt;
 
-use super::layers::ErrorHandlerLayer;
 use super::communication::CommunicationFactory;
+use super::layers::ErrorHandlerLayer;
 use super::protocols::LifespanHandler;
 use super::scope::ScopeFactory;
 use super::service::ArasASGIService;
@@ -68,14 +68,14 @@ pub struct ArasServer {
     backpressure_size: usize,
     max_ws_frame_size: usize,
     request_ids: bool,
+    auto_date_header: bool,
     sensitive_headers: Vec<HeaderName>,
 }
 
 impl ArasServer {
     /// Returns a builder for [`ArasServer`].
     ///
-    /// The `cancel_token` is required so that the caller controls when the server shuts down.
-    /// All other settings have sensible defaults and can be overridden on the builder.
+    /// Calling `cancel()` on the provided `CancellationToken` will trigger a graceful shutdown.
     pub fn builder(cancel_token: CancellationToken) -> ArasServerBuilder {
         ArasServerBuilder::new(cancel_token)
     }
@@ -101,6 +101,7 @@ pub struct ArasServerBuilder {
     backpressure_size: usize,
     max_ws_frame_size: usize,
     request_ids: bool,
+    auto_date_header: bool,
     sensitive_headers: Vec<HeaderName>,
 }
 
@@ -120,6 +121,7 @@ impl ArasServerBuilder {
             backpressure_size: 16,
             max_ws_frame_size: 64 * 1024,
             request_ids: false,
+            auto_date_header: true,
             sensitive_headers: Vec::new(),
         }
     }
@@ -185,7 +187,7 @@ impl ArasServerBuilder {
         self
     }
 
-    /// Number of ASGI messages to buffer when the application is producing messages faster than the server can send them to the client. 
+    /// Number of ASGI messages to buffer when the application is producing messages faster than the server can send them to the client.
     /// Defaults to `16`.
     pub fn backpressure_size(mut self, size: usize) -> Self {
         self.backpressure_size = size;
@@ -203,6 +205,12 @@ impl ArasServerBuilder {
     /// Useful for correlating log lines across a request lifecycle.
     pub fn request_ids(mut self) -> Self {
         self.request_ids = true;
+        self
+    }
+
+    /// Disable automatic `Date` header on responses.
+    pub fn disable_auto_date_header(mut self) -> Self {
+        self.auto_date_header = false;
         self
     }
 
@@ -228,6 +236,7 @@ impl ArasServerBuilder {
             backpressure_size: self.backpressure_size,
             max_ws_frame_size: self.max_ws_frame_size,
             request_ids: self.request_ids,
+            auto_date_header: self.auto_date_header,
             sensitive_headers: self.sensitive_headers,
         }
     }
@@ -264,33 +273,31 @@ impl ArasServer {
     ) -> ArasResult<()> {
         let keep_alive = self.keep_alive;
         let socket_addr = SocketAddr::new(self.addr, self.port);
-        let listener = TcpListener::bind(socket_addr)
-            .await
-            .expect("Failed to bind socket");
+        let listener = TcpListener::bind(socket_addr).await.expect("Failed to bind socket");
         info!("Listening on http://{}", socket_addr);
 
         let x_request_id = http::HeaderName::from_static("x-request-id");
 
         let stack = tower::ServiceBuilder::new()
             .layer(CatchPanicLayer::new())
-            .option_layer(self.request_ids.then(|| {
-                SetRequestIdLayer::new(x_request_id.clone(), MakeRequestUuid)
-            }))
+            .option_layer(
+                self.request_ids
+                    .then(|| SetRequestIdLayer::new(x_request_id.clone(), MakeRequestUuid)),
+            )
             .layer(
                 TraceLayer::new_for_http()
                     .on_request(|req: &Request, _span: &tracing::Span| {
                         info!("Processing request: {} {}", req.method(), req.uri().path())
                     })
-                    .on_response(
-                        |res: &http::Response<_>, _latency: Duration, _span: &tracing::Span| {
-                            info!("Response sent: {}", res.status_string())
-                        },
-                    ),
+                    .on_response(|res: &http::Response<_>, _latency: Duration, _span: &tracing::Span| {
+                        info!("Response sent: {}", res.status_string())
+                    }),
             )
             .option_layer(self.request_ids.then(|| PropagateRequestIdLayer::new(x_request_id)))
-            .option_layer((self.sensitive_headers.len() > 0).then(|| {
-                SetSensitiveRequestHeadersLayer::new(self.sensitive_headers.clone())
-            }))
+            .option_layer(
+                (self.sensitive_headers.len() > 0)
+                    .then(|| SetSensitiveRequestHeadersLayer::new(self.sensitive_headers.clone())),
+            )
             .layer(ErrorHandlerLayer::new())
             .layer(CompressionLayer::new())
             .layer(RequestDecompressionLayer::new())
@@ -327,7 +334,7 @@ impl ArasServer {
             let conn = http1::Builder::new()
                 .timer(TokioTimer::new())
                 .keep_alive(keep_alive)
-                .auto_date_header(true)
+                .auto_date_header(self.auto_date_header)
                 .serve_connection(io, svc)
                 .with_upgrades();
 
@@ -337,10 +344,7 @@ impl ArasServer {
     }
 }
 
-async fn handle_conn_close(
-    client: SocketAddr,
-    conn: impl Future<Output = std::result::Result<(), hyper::Error>>,
-) {
+async fn handle_conn_close(client: SocketAddr, conn: impl Future<Output = std::result::Result<(), hyper::Error>>) {
     if let Err(e) = conn.await {
         if e.is_closed() || e.is_canceled() {
             info!("Connection closed by client: {}. \n {}", client, e);
