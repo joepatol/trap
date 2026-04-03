@@ -28,13 +28,21 @@ Or you can run you application through the ARAS cli:
 aras serve my_app.main:app
 ```
 
-## Running tests
+## Installing
 
-Install the project from the aras_py root
+Install using uv
+
+```bash
+uv lock && maturin develop --uv
+```
+
+Install using pip
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate && pip install .[dev,hot-reload]
 ```
+
+### Running tests
 
 Now run the tests:
 
@@ -45,12 +53,6 @@ pytest
 # Improvement Tasks
 
 ## High Priority
-
-### Replace hardcoded sleep in test server startup
-`conftest.py` uses a fixed `time.sleep(1)` to wait for the test server to become ready. This is unreliable — it fails on slow machines and wastes time on fast ones. It should be replaced with a health-check retry loop with a timeout, polling until the server responds or a deadline is exceeded.
-
-### Return an error on unknown ASGI message types
-When the Python application sends an unrecognised ASGI message type, the server logs an error and silently continues. The calling application receives no feedback and will typically hang waiting for a response that never comes. An unknown message type should propagate an error back to the application immediately.
 
 ### Validate configuration before crossing the FFI boundary
 All server configuration is passed from Python to Rust without any upfront checks. Invalid values such as `port=0`, `concurrency_limit=0`, or negative timeouts reach Rust and fail with low-quality error messages. Basic bounds and type validation in the Python layer would produce actionable errors before the server starts.
@@ -70,9 +72,3 @@ The Rust function exported to Python takes approximately twelve positional argum
 
 ### Document hot-reload behaviour on in-flight requests
 Hot reload uses `watchfiles.run_process()`, which performs a full process restart on file change. This terminates in-flight requests immediately with no drain period. This behaviour is acceptable for a development feature but should be documented so users are not surprised by abrupt client disconnections during reload.
-
-### Expand WebSocket test coverage
-The test suite contains a single WebSocket test covering only basic echo. Missing scenarios include: close code handling, message fragmentation, server-initiated disconnect, and client disconnect mid-stream. These map directly to known edge cases in the underlying Rust server.
-
-### Add middleware and error path integration tests
-Rate limiting, concurrency limits, request body size limits, and request timeouts have no integration test coverage. Neither does the error path where the Python application raises an exception mid-response. These are the scenarios most likely to produce subtle failures in production.

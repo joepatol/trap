@@ -136,9 +136,9 @@ impl ArasServerBuilder {
         self
     }
 
-    /// Whether to enable HTTP keep-alive. Defaults to `true`.
-    pub fn keep_alive(mut self, keep_alive: bool) -> Self {
-        self.keep_alive = keep_alive;
+    /// Disable HTTP keep-alive.
+    pub fn no_keep_alive(mut self) -> Self {
+        self.keep_alive = false;
         self
     }
 

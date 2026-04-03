@@ -25,9 +25,6 @@ run `cargo test`.
 ### Fix WebSocket close code on clean app exit
 When the ASGI application exits without explicitly sending a close frame, the connection is closed with code `1011 Internal Error`. A normal application exit should produce `1000 Normal Closure`. The current behavior misreports clean shutdowns as errors to the client.
 
-### Extract duplicated header conversion in `ScopeFactory`
-`build_http` and `build_websocket` contain identical header iteration and `Bytes` conversion code. Any bug fix or optimization must be applied twice. This should be extracted into a shared helper.
-
 ## Low Priority
 
 ### Document error caching on `ApplicationHandle`

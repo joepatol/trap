@@ -69,7 +69,7 @@ fn generate_cancel_token() -> PyStopServerToken {
 /// A cancellation token is also required to allow shutdown of the server from Python, the token can be generated using the `generate_cancel_token` function.
 ///
 /// What you probably want is to create a cancel token, run the awaitable returned by this function using `event_loop.run_until_complete`, and then when 
-/// you want to stop the server call token.stop() from another thread or signal handler.
+/// you want to stop the server call `token.stop()` from another thread or signal handler.
 ///
 /// The ARAS Python package will do this ceremony for the user when using `aras.serve` or the CLI. This lower level function is only required when the user requires
 /// more control over the event loop (e.g. use something other than asyncio, or integrate into an existing event loop), or over the cancellation.
@@ -105,7 +105,6 @@ fn serve_python<'a>(
     let mut builder = ArasServer::builder(cancel_token)
         .addr(addr.into())
         .port(port)
-        .keep_alive(keep_alive)
         .request_timeout(Duration::from_secs(request_timeout))
         .body_limit(max_size_kb * 1000)
         .rate_limit(rate_limit.0, rate_limit.1)
@@ -118,9 +117,13 @@ fn serve_python<'a>(
         builder = builder.request_ids();
     }
 
+    if keep_alive == false {
+        builder = builder.no_keep_alive();
+    }
+
     if let Some(sensitive_headers) = sensitive_headers {
-        for header in sensitive_headers.into_iter() {
-            builder = builder.sensitive_header(header.clone().try_into().map_err(|e|{
+        for header in sensitive_headers.iter() {
+            builder = builder.sensitive_header(header.try_into().map_err(|e|{
                 PyValueError::new_err(format!("Invalid header name '{}'; {}", header, e))
             })?);
         }

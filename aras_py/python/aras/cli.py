@@ -84,10 +84,32 @@ def cli() -> None:
     show_default=True,
 )
 @click.option(
+    "--backpressure-size",
+    type=int,
+    default=16,
+    help="Number of pending requests that will trigger backpressure",
+    show_default=True,
+)
+@click.option(
     "--max-ws-frame-size",
     type=int,
     default=64 * 1024,
     help="Set the max size of a single websocket frame in bytes",
+    show_default=True,
+)
+@click.option(
+    "--request-ids",
+    is_flag=True,
+    help="Enable generation and propagation of unique request IDs for each incoming request. The request ID will be included in logs and propagated to the ASGI application via the 'X-Request-ID' header.",
+    default=False,
+    show_default=True,
+)
+@click.option(
+    "--sensitive-headers",
+    type=str,
+    multiple=True,
+    default=None,
+    help="Specify headers that should be treated as sensitive and redacted in logs. Can be used multiple times to specify multiple headers.",
     show_default=True,
 )
 @click.option(
@@ -109,7 +131,10 @@ def serve(
     rate_limit: tuple[int, int],
     buffer_size: int,
     backpressure_timeout: int,
+    backpressure_size: int,
     max_ws_frame_size: int,
+    request_ids: bool,
+    sensitive_headers: list[str] | None,
     reload: bool,
 ) -> None:
     # Insert current working directory to sys.path to make sure the dynamic import,
@@ -139,6 +164,9 @@ def serve(
         rate_limit,
         buffer_size,
         backpressure_timeout,
+        backpressure_size,
         max_ws_frame_size,
+        request_ids,
+        sensitive_headers,
         reload,
     )

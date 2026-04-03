@@ -1,7 +1,7 @@
 use asgispec::prelude::*;
 use asgispec::scope::{HTTPScope, LifespanScope, WebsocketScope};
 use bytes::Bytes;
-use http::Request;
+use http::{Request, HeaderMap};
 
 use crate::types::ConnectionInfo;
 
@@ -28,16 +28,7 @@ impl<S: State> ScopeFactory<S> {
             Bytes::from(request.uri().to_string()),
             Bytes::from(request.uri().query().unwrap_or("").to_owned()),
             String::from(""), // Optional, default for now
-            request
-                .headers()
-                .into_iter()
-                .map(|(name, value)| {
-                    (
-                        Bytes::from(name.as_str().to_string()),
-                        Bytes::from(value.as_bytes().to_vec()),
-                    )
-                })
-                .collect(),
+            parse_headers(request.headers()),
             Some((conn.client_ip.to_owned(), conn.client_port)),
             Some((conn.server_ip.to_owned(), conn.server_port)),
             Some(self.state.clone()),
@@ -70,16 +61,7 @@ impl<S: State> ScopeFactory<S> {
             Bytes::from(request.uri().to_string()),
             Bytes::from(request.uri().query().unwrap_or("").to_owned()),
             String::from(""), // TODO: Optional, default for now
-            request
-                .headers()
-                .into_iter()
-                .map(|(name, value)| {
-                    (
-                        Bytes::from(name.as_str().to_string()),
-                        Bytes::from(value.as_bytes().to_vec()),
-                    )
-                })
-                .collect(),
+            parse_headers(request.headers()),
             Some((conn.client_ip.to_owned(), conn.client_port)),
             Some((conn.server_ip.to_owned(), conn.server_port)),
             subprotocols,
@@ -94,4 +76,17 @@ impl<S: State> ScopeFactory<S> {
             Some(self.state.clone()),
         ))
     }
+}
+
+
+fn parse_headers(headers: &HeaderMap) -> Vec<(Bytes, Bytes)> {
+    headers
+        .into_iter()
+        .map(|(name, value)| {
+            (
+                Bytes::from(name.as_str().to_string()),
+                Bytes::from(value.as_bytes().to_vec()),
+            )
+        })
+        .collect()
 }

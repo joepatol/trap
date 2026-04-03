@@ -17,7 +17,10 @@ def serve(
     rate_limit: tuple[int, int] = (1000, 1),
     buffer_size: int = 1024,
     backpressure_timeout: int = 60,
+    backpressure_size: int = 16,
     max_ws_frame_size: int = 64 * 1024,
+    request_ids: bool = False,
+    sensitive_headers: list[str] | None = None,
     hot_reload: bool = False,
 ) -> None:
     if hot_reload:
@@ -43,7 +46,10 @@ def serve(
                 rate_limit,
                 buffer_size,
                 backpressure_timeout,
+                backpressure_size,
                 max_ws_frame_size,
+                request_ids,
+                sensitive_headers,
             ),
             watch_filter=DefaultFilter(),
         )
@@ -60,7 +66,10 @@ def serve(
             rate_limit,
             buffer_size,
             backpressure_timeout,
+            backpressure_size,
             max_ws_frame_size,
+            request_ids,
+            sensitive_headers,
         )
 
 
@@ -76,7 +85,11 @@ def _serve(
     rate_limit: tuple[int, int] = (1000, 1),
     buffer_size: int = 1024,
     backpressure_timeout: int = 60,
+    backpressure_size: int = 16,
     max_ws_frame_size: int = 64 * 1024,
+    request_ids: bool = False,
+    sensitive_headers: list[str] | None = None,
+
 ) -> None:
     loop = asyncio.new_event_loop()
     token = generate_cancel_token()
@@ -99,6 +112,9 @@ def _serve(
             rate_limit=rate_limit,
             buffer_size=buffer_size,
             backpressure_timeout=backpressure_timeout,
+            backpressure_size=backpressure_size,
             max_ws_frame_size=max_ws_frame_size,
+            request_ids=request_ids,
+            sensitive_headers=sensitive_headers,
         )
     )
