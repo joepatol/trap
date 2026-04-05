@@ -8,15 +8,34 @@ from pathlib import Path
 from dataclasses import dataclass
 
 from watchfiles import BaseFilter, run_process
-from watchfiles.main import FileChange
+from watchfiles.main import Change
 
 from .aras import generate_cancel_token, serve_python  # type: ignore
 from .types import ASGIApplication, LogLevel
 
 
 @dataclass
+class ServerConfig:
+    host: str
+    port: int
+    log_level: LogLevel
+    keep_alive: bool
+    max_concurrency: int | None
+    max_size_kb: int
+    request_timeout: int
+    rate_limit: tuple[int, int]
+    buffer_size: int
+    backpressure_timeout: int
+    backpressure_size: int
+    max_ws_frame_size: int
+    request_ids: bool
+    auto_date_header: bool
+    sensitive_headers: list[str] | None
+
+
+@dataclass
 class ReloadConfig:
-    paths: list[str | Path] = "."
+    paths: list[str | Path] = ["."]
     watch_filter: BaseFilter | None = None
 
 
@@ -43,7 +62,7 @@ def serve(
     if workers > 1 and reload:
         raise ValueError("Cannot use both 'workers' and 'reload' at the same time")
 
-    kwargs = dict(
+    config = ServerConfig(
         host=host,
         port=port,
         log_level=log_level,
@@ -63,10 +82,10 @@ def serve(
 
     if workers > 1:
         import_string = _resolve_import_string(application)
-        _serve_with_workers(import_string, workers, **kwargs)
+        _serve_with_workers(import_string, workers, config)
     elif reload:
         import_string = _resolve_import_string(application)
-        _serve_with_reload(import_string, reload, **kwargs)
+        _serve_with_reload(import_string, reload, config)
     else:
         app = _import_from_string(application) if isinstance(application, str) else application
         _serve(app, **kwargs)  # type: ignore
@@ -108,13 +127,13 @@ def _import_from_string(import_string: str) -> ASGIApplication:
     return getattr(module, attr_str)
 
 
-def _serve_with_workers(import_string: str, workers: int, **kwargs) -> None:  # type: ignore[no-untyped-def]
+def _serve_with_workers(import_string: str, workers: int, config: ServerConfig) -> None:
     processes: list[multiprocessing.Process] = []
     for _ in range(workers):
         p = multiprocessing.Process(
             target=_serve_from_import_string,
             args=(import_string,),
-            kwargs={**kwargs, "worker_mode": True},
+            kwargs={"config": config, "worker_mode": True},
         )
         p.start()
         processes.append(p)
@@ -136,44 +155,30 @@ def _serve_with_workers(import_string: str, workers: int, **kwargs) -> None:  # 
             p.join()
 
 
-def _serve_with_reload(import_string: str, config: ReloadConfig, **kwargs) -> None:  # type: ignore[no-untyped-def]
+def _serve_with_reload(import_string: str, config: ReloadConfig, server_config: ServerConfig) -> None:
     run_process(
         *config.paths,
         target=_serve_from_import_string,
         args=(import_string,),
         callback=_files_changed_callback,
-        kwargs=kwargs,
+        kwargs={"config": server_config},
         watch_filter=config.watch_filter,
     )
 
 
-def _files_changed_callback(file_changes: set[tuple[FileChange, str]]) -> None:
+def _files_changed_callback(file_changes: set[tuple[Change, str]]) -> None:
     changed_files = {f for _, f in file_changes}
     print(f"Files changed: {':'.join(changed_files)}.\nRestarting server...")
 
 
-def _serve_from_import_string(import_string: str, worker_mode: bool = False, **kwargs) -> None:  # type: ignore[no-untyped-def]
+def _serve_from_import_string(import_string: str, config: ServerConfig, worker_mode: bool = False) -> None:
     app = _import_from_string(import_string)
-    _serve(app, worker_mode=worker_mode, **kwargs)
+    _serve(app, worker_mode=worker_mode, config=config)
 
 
 def _serve(
     application: ASGIApplication,
-    host: str = "127.0.0.1",
-    port: int = 8080,
-    log_level: LogLevel = "INFO",
-    keep_alive: bool = True,
-    max_concurrency: int | None = None,
-    max_size_kb: int = 1_000_000,
-    request_timeout: int = 180,
-    rate_limit: tuple[int, int] = (1000, 1),
-    buffer_size: int = 1024,
-    backpressure_timeout: int = 60,
-    backpressure_size: int = 16,
-    max_ws_frame_size: int = 64 * 1024,
-    request_ids: bool = False,
-    auto_date_header: bool = True,
-    sensitive_headers: list[str] | None = None,
+    config: ServerConfig,
     worker_mode: bool = False,
 ) -> None:
     loop = asyncio.new_event_loop()
@@ -187,21 +192,21 @@ def _serve(
             application,
             token,
             loop,
-            addr=[int(i) for i in host.split(".")],
-            port=port,
-            keep_alive=keep_alive,
-            log_level=log_level,
-            max_concurrency=max_concurrency,
-            max_size_kb=max_size_kb,
-            request_timeout=request_timeout,
-            rate_limit=rate_limit,
-            buffer_size=buffer_size,
-            backpressure_timeout=backpressure_timeout,
-            backpressure_size=backpressure_size,
-            max_ws_frame_size=max_ws_frame_size,
-            request_ids=request_ids,
-            auto_date_header=auto_date_header,
-            sensitive_headers=sensitive_headers,
+            addr=[int(i) for i in config.host.split(".")],
+            port=config.port,
+            keep_alive=config.keep_alive,
+            log_level=config.log_level,
+            max_concurrency=config.max_concurrency,
+            max_size_kb=config.max_size_kb,
+            request_timeout=config.request_timeout,
+            rate_limit=config.rate_limit,
+            buffer_size=config.buffer_size,
+            backpressure_timeout=config.backpressure_timeout,
+            backpressure_size=config.backpressure_size,
+            max_ws_frame_size=config.max_ws_frame_size,
+            request_ids=config.request_ids,
+            auto_date_header=config.auto_date_header,
+            sensitive_headers=config.sensitive_headers,
             worker_mode=worker_mode,
         )
     )

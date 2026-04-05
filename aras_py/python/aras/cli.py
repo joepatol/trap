@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import click
 
 from .serve import serve as serve_app, ReloadConfig
@@ -156,7 +158,7 @@ def serve(
     sensitive_headers: list[str] | None = None,
     workers: int = 1,
     reload: bool = False,
-    reload_path: list[str] = ["."],
+    reload_path: list[str | Path] = ["."],
 ) -> None:
     if reload:
         reload_config = ReloadConfig(paths=reload_path)
