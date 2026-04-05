@@ -1,7 +1,9 @@
+use std::io::Result;
 use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
+use socket2::{Domain, Socket, Type};
 use asgispec::prelude::*;
 use http::HeaderName;
 use hyper::server::conn::http1;
@@ -70,6 +72,7 @@ pub struct ArasServer {
     request_ids: bool,
     auto_date_header: bool,
     sensitive_headers: Vec<HeaderName>,
+    reuse_port: bool,
 }
 
 impl ArasServer {
@@ -103,6 +106,7 @@ pub struct ArasServerBuilder {
     request_ids: bool,
     auto_date_header: bool,
     sensitive_headers: Vec<HeaderName>,
+    reuse_port: bool,
 }
 
 impl ArasServerBuilder {
@@ -123,6 +127,7 @@ impl ArasServerBuilder {
             request_ids: false,
             auto_date_header: true,
             sensitive_headers: Vec::new(),
+            reuse_port: false,
         }
     }
 
@@ -220,6 +225,13 @@ impl ArasServerBuilder {
         self
     }
 
+    /// Enable `SO_REUSEPORT` on the TCP listener, allowing multiple processes to bind the same
+    /// address and port. Required when running multiple worker processes.
+    pub fn reuse_port(mut self) -> Self {
+        self.reuse_port = true;
+        self
+    }
+
     /// Builds the [`ArasServer`].
     pub fn build(self) -> ArasServer {
         ArasServer {
@@ -238,6 +250,7 @@ impl ArasServerBuilder {
             request_ids: self.request_ids,
             auto_date_header: self.auto_date_header,
             sensitive_headers: self.sensitive_headers,
+            reuse_port: self.reuse_port,
         }
     }
 }
@@ -273,7 +286,7 @@ impl ArasServer {
     ) -> ArasResult<()> {
         let keep_alive = self.keep_alive;
         let socket_addr = SocketAddr::new(self.addr, self.port);
-        let listener = TcpListener::bind(socket_addr).await.expect("Failed to bind socket");
+        let listener = bind_tcp_listener(socket_addr, self.reuse_port).await.expect("Failed to bind socket");
         info!("Listening on http://{}", socket_addr);
 
         let x_request_id = http::HeaderName::from_static("x-request-id");
@@ -351,5 +364,19 @@ async fn handle_conn_close(client: SocketAddr, conn: impl Future<Output = std::r
         } else {
             error!("Failed to serve connection: {}. \n {}", client, e);
         }
+    }
+}
+
+async fn bind_tcp_listener(addr: SocketAddr, reuse_port: bool) -> Result<TcpListener> {
+    if reuse_port {
+        let domain = if addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 };
+        let socket = Socket::new(domain, Type::STREAM, None)?;
+        socket.set_reuse_port(true)?;
+        socket.set_nonblocking(true)?;
+        socket.bind(&addr.into())?;
+        socket.listen(128)?;
+        TcpListener::from_std(socket.into())
+    } else {
+        TcpListener::bind(addr).await
     }
 }

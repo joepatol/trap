@@ -1,9 +1,6 @@
-import os
-import sys
-
 import click
 
-from .serve import serve as serve_app
+from .serve import serve as serve_app, ReloadConfig
 from .types import LogLevel
 
 
@@ -119,10 +116,25 @@ def cli() -> None:
     show_default=True,
 )
 @click.option(
+    "--workers",
+    type=int,
+    default=1,
+    help="Number of worker processes. Each worker runs a full server instance. Cannot be combined with --reload.",
+    show_default=True,
+)
+@click.option(
     "--reload",
     is_flag=True,
     help="Enable hot reload for development. Automatically restarts the server when code changes.",
     default=False,
+    show_default=True,
+)
+@click.option(
+    "--reload-path",
+    type=str,
+    multiple=True,
+    default=["."],
+    help="Specify paths to watch for changes when hot reload is enabled. Can be used multiple times to specify multiple paths.",
     show_default=True,
 )
 def serve(
@@ -142,11 +154,14 @@ def serve(
     request_ids: bool,
     no_auto_date_header: bool,
     sensitive_headers: list[str] | None = None,
+    workers: int = 1,
     reload: bool = False,
+    reload_path: list[str] = ["."],
 ) -> None:
-    # Insert current working directory to sys.path to make sure the dynamic import,
-    # which is referenced from the cwd, works correctly.
-    sys.path.insert(0, os.getcwd())
+    if reload:
+        reload_config = ReloadConfig(paths=reload_path)
+    else:
+        reload_config = None
 
     serve_app(
         application,
@@ -165,5 +180,6 @@ def serve(
         request_ids=request_ids,
         auto_date_header=not no_auto_date_header,
         sensitive_headers=sensitive_headers,
-        reload=reload,
+        workers=workers,
+        reload=reload_config,
     )

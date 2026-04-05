@@ -1,56 +1,23 @@
 import asyncio
 import importlib
+import multiprocessing
 import os
 import signal
 import sys
-from typing import Any, overload
+from pathlib import Path
+from dataclasses import dataclass
+
+from watchfiles import BaseFilter, run_process
+from watchfiles.main import FileChange
 
 from .aras import generate_cancel_token, serve_python  # type: ignore
 from .types import ASGIApplication, LogLevel
 
 
-@overload
-def serve(
-    application: ASGIApplication,
-    host: str = ...,
-    port: int = ...,
-    log_level: LogLevel = ...,
-    keep_alive: bool = ...,
-    max_concurrency: int | None = ...,
-    max_size_kb: int = ...,
-    request_timeout: int = ...,
-    rate_limit: tuple[int, int] = ...,
-    buffer_size: int = ...,
-    backpressure_timeout: int = ...,
-    backpressure_size: int = ...,
-    max_ws_frame_size: int = ...,
-    request_ids: bool = ...,
-    auto_date_header: bool = ...,
-    sensitive_headers: list[str] | None = ...,
-    reload: bool = ...,
-) -> None: ...
-
-
-@overload
-def serve(
-    application: str,
-    host: str = ...,
-    port: int = ...,
-    log_level: LogLevel = ...,
-    keep_alive: bool = ...,
-    max_concurrency: int | None = ...,
-    max_size_kb: int = ...,
-    request_timeout: int = ...,
-    rate_limit: tuple[int, int] = ...,
-    buffer_size: int = ...,
-    backpressure_timeout: int = ...,
-    backpressure_size: int = ...,
-    max_ws_frame_size: int = ...,
-    request_ids: bool = ...,
-    auto_date_header: bool = ...,
-    sensitive_headers: list[str] | None = ...,
-    reload: bool = ...,
-) -> None: ...
+@dataclass
+class ReloadConfig:
+    paths: list[str | Path] = "."
+    watch_filter: BaseFilter | None = None
 
 
 def serve(
@@ -70,8 +37,12 @@ def serve(
     request_ids: bool = False,
     auto_date_header: bool = True,
     sensitive_headers: list[str] | None = None,
-    reload: bool = False,
+    workers: int = 1,
+    reload: ReloadConfig | None = None,
 ) -> None:
+    if workers > 1 and reload:
+        raise ValueError("Cannot use both 'workers' and 'reload' at the same time")
+
     kwargs = dict(
         host=host,
         port=port,
@@ -90,9 +61,12 @@ def serve(
         sensitive_headers=sensitive_headers,
     )
 
-    if reload:
+    if workers > 1:
         import_string = _resolve_import_string(application)
-        _serve_with_reload(import_string, **kwargs)
+        _serve_with_workers(import_string, workers, **kwargs)
+    elif reload:
+        import_string = _resolve_import_string(application)
+        _serve_with_reload(import_string, reload, **kwargs)
     else:
         app = _import_from_string(application) if isinstance(application, str) else application
         _serve(app, **kwargs)  # type: ignore
@@ -128,38 +102,59 @@ def _resolve_import_string(application: ASGIApplication | str) -> str:
 
 
 def _import_from_string(import_string: str) -> ASGIApplication:
+    sys.path.insert(0, os.getcwd())
     module_str, attr_str = import_string.split(":")
     module = importlib.import_module(module_str)
     return getattr(module, attr_str)
 
 
-def _serve_with_reload(import_string: str, **kwargs) -> None:  # type: ignore[no-untyped-def]
-    try:
-        from watchfiles import DefaultFilter, run_process
-    except ImportError:
-        raise ImportError(
-            "watchfiles is required for hot reload. Please install it with 'pip install aras_py[hot-reload]'."
+def _serve_with_workers(import_string: str, workers: int, **kwargs) -> None:  # type: ignore[no-untyped-def]
+    processes: list[multiprocessing.Process] = []
+    for _ in range(workers):
+        p = multiprocessing.Process(
+            target=_serve_from_import_string,
+            args=(import_string,),
+            kwargs={**kwargs, "worker_mode": True},
         )
+        p.start()
+        processes.append(p)
 
+    def _terminate_workers(signum: int, frame: object) -> None:
+        for p in processes:
+            p.terminate()
+
+    signal.signal(signal.SIGTERM, _terminate_workers)
+    signal.signal(signal.SIGINT, _terminate_workers)
+
+    try:
+        for p in processes:
+            p.join()
+    except KeyboardInterrupt:
+        for p in processes:
+            p.terminate()
+        for p in processes:
+            p.join()
+
+
+def _serve_with_reload(import_string: str, config: ReloadConfig, **kwargs) -> None:  # type: ignore[no-untyped-def]
     run_process(
-        ".",
+        *config.paths,
         target=_serve_from_import_string,
         args=(import_string,),
         callback=_files_changed_callback,
         kwargs=kwargs,
-        watch_filter=DefaultFilter(),
+        watch_filter=config.watch_filter,
     )
 
 
-def _files_changed_callback(file_changes: set[tuple[Any, str]]) -> None:
+def _files_changed_callback(file_changes: set[tuple[FileChange, str]]) -> None:
     changed_files = {f for _, f in file_changes}
     print(f"Files changed: {':'.join(changed_files)}.\nRestarting server...")
 
 
-def _serve_from_import_string(import_string: str, **kwargs) -> None:  # type: ignore[no-untyped-def]
-    sys.path.insert(0, os.getcwd())
+def _serve_from_import_string(import_string: str, worker_mode: bool = False, **kwargs) -> None:  # type: ignore[no-untyped-def]
     app = _import_from_string(import_string)
-    _serve(app, **kwargs)
+    _serve(app, worker_mode=worker_mode, **kwargs)
 
 
 def _serve(
@@ -179,6 +174,7 @@ def _serve(
     request_ids: bool = False,
     auto_date_header: bool = True,
     sensitive_headers: list[str] | None = None,
+    worker_mode: bool = False,
 ) -> None:
     loop = asyncio.new_event_loop()
     token = generate_cancel_token()
@@ -206,5 +202,6 @@ def _serve(
             request_ids=request_ids,
             auto_date_header=auto_date_header,
             sensitive_headers=sensitive_headers,
+            worker_mode=worker_mode,
         )
     )

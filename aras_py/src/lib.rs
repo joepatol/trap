@@ -4,30 +4,17 @@ use std::time::Duration;
 
 use aras_core::ArasServer;
 use asgispec::prelude::*;
-use log::info;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3_async_runtimes;
-use tokio::runtime::Handle;
 
 mod convert;
 mod wrappers;
+mod tracing;
 
 use tokio_util::sync::CancellationToken;
 use wrappers::{PyASGIAppWrapper, PyState, PyStopServerToken};
-
-fn get_log_level_filter(log_level: &str) -> tracing::Level {
-    match log_level {
-        "DEBUG" => tracing::Level::DEBUG,
-        "INFO" => tracing::Level::INFO,
-        "ERROR" => tracing::Level::ERROR,
-        "OFF" => tracing::Level::ERROR,
-        "TRACE" => tracing::Level::TRACE,
-        "WARN" => tracing::Level::WARN,
-        _ => tracing::Level::INFO,
-    }
-}
 
 #[pyfunction]
 #[pyo3(signature = ())]
@@ -59,6 +46,7 @@ fn generate_cancel_token() -> PyStopServerToken {
     request_ids = false,
     auto_date_header = true,
     sensitive_headers = None,
+    worker_mode = false,
 ))]
 /// Serves a Python ASGI application using the ARAS server.
 ///
@@ -94,10 +82,10 @@ fn serve_python<'a>(
     request_ids: bool,
     auto_date_header: bool,
     sensitive_headers: Option<Vec<String>>,
+    worker_mode: bool,
 ) -> PyResult<Bound<'a, PyAny>> {
-    tracing_subscriber::fmt()
-        .with_max_level(get_log_level_filter(log_level))
-        .init();
+
+    tracing::init(log_level, worker_mode);
 
     let state = PyState::new(PyDict::new(py).unbind());
     let cancel_token = token.get_cancel_token();
@@ -132,7 +120,7 @@ fn serve_python<'a>(
             builder = builder.sensitive_header(
                 header
                     .try_into()
-                    .map_err(|e| PyValueError::new_err(format!("Invalid header name '{}'; {}", header, e)))?,
+                    .map_err(|e| PyValueError::new_err(format!("Invalid sensitive header name '{}'; {}", header, e)))?,
             );
         }
     }
@@ -141,11 +129,13 @@ fn serve_python<'a>(
         builder = builder.concurrency_limit(limit);
     }
 
+    if worker_mode {
+        builder = builder.reuse_port();
+    }
+
     let asgi_server = builder.build();
 
     pyo3_async_runtimes::tokio::future_into_py_with_locals(py, task_locals, async move {
-        info!("Started {} workers", Handle::current().metrics().num_workers());
-
         asgi_server
             .run(asgi_application, state)
             .await

@@ -50,6 +50,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "log",
+ "socket2",
  "thiserror 2.0.9",
  "tokio",
  "tokio-util",

@@ -25,4 +25,5 @@ def serve_python(
     request_ids: bool = False,
     auto_date_header: bool = True,
     sensitive_headers: list[str] | None = None,
+    worker_mode: bool = False,
 ) -> Awaitable[None]: ...

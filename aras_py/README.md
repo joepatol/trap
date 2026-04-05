@@ -33,13 +33,13 @@ aras serve my_app.main:app
 Install using uv
 
 ```bash
-uv lock && maturin develop --uv --extras dev,hot-reload
+uv lock && maturin develop --uv --extras dev
 ```
 
 Install using pip
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate && pip install .[dev,hot-reload]
+python3 -m venv .venv && source .venv/bin/activate && pip install .[dev]
 ```
 
 ### Running tests

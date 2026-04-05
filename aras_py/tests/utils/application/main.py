@@ -20,7 +20,7 @@ async def lifespan(_: FastAPI):
     db_models.Base.metadata.drop_all(bind=engine)
 
 
-app = FastAPI(debug=False, lifespan=lifespan)
+app = FastAPI(debug=False,lifespan=lifespan)
 
 
 app.add_middleware(
