@@ -5,7 +5,7 @@ import os
 import signal
 import sys
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from watchfiles import BaseFilter, run_process
 from watchfiles.main import Change
@@ -35,7 +35,7 @@ class ServerConfig:
 
 @dataclass
 class ReloadConfig:
-    paths: list[str | Path] = ["."]
+    paths: list[str | Path] = field(default_factory=lambda: ["."])
     watch_filter: BaseFilter | None = None
 
 
@@ -57,8 +57,33 @@ def serve(
     auto_date_header: bool = True,
     sensitive_headers: list[str] | None = None,
     workers: int = 1,
+    worker_mode: bool = False,
     reload: ReloadConfig | None = None,
 ) -> None:
+    """
+    Serve an ASGI application with the given configuration.
+    
+    Args:
+        application: The ASGI application to serve, or an import string like 'myapp.main:app'.
+        host: The host to bind the server to.
+        port: The port to listen on.
+        log_level: The logging level to use.
+        keep_alive: Whether to enable HTTP keep-alive.
+        max_concurrency: The maximum number of concurrent requests to allow. None means no limit.
+        max_size_kb: The maximum request size in kilobytes.
+        request_timeout: The maximum time in seconds to allow for a request before timing out.
+        rate_limit: A tuple of (max_requests, per_seconds) to limit the number of requests from a single client.
+        buffer_size: The size in bytes of the buffer to use for reading request bodies.
+        backpressure_timeout: The maximum time in seconds to wait for communication to the app before applying backpressure.
+        backpressure_size: The size number of messages in a communcation channel before applying backpressure.
+        max_ws_frame_size: The maximum size in bytes of a WebSocket frame. Bigger frames are fragmented.
+        request_ids: Whether to generate unique request IDs for each incoming request. ID is included in the response headers.
+        auto_date_header: Whether to automatically add a Date header to responses.
+        sensitive_headers: A list of header names to treat as sensitive. Will be redacted in logs.
+        workers: The number of worker processes to use. Must be 1 if reload is enabled.
+        worker_mode: Whether to run in worker mode, which is optimized for running multiple workers behind a load balancer. Auto-enable when workers > 1.
+        reload: A ReloadConfig object to enable hot reload, or None to disable hot reload. Cannot be used with workers > 1.
+    """
     if workers > 1 and reload:
         raise ValueError("Cannot use both 'workers' and 'reload' at the same time")
 
@@ -88,7 +113,7 @@ def serve(
         _serve_with_reload(import_string, reload, config)
     else:
         app = _import_from_string(application) if isinstance(application, str) else application
-        _serve(app, **kwargs)  # type: ignore
+        _serve(app, config=config, worker_mode=worker_mode)
 
 
 def _resolve_import_string(application: ASGIApplication | str) -> str:

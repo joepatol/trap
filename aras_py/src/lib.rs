@@ -139,7 +139,7 @@ fn serve_python<'a>(
         asgi_server
             .run(asgi_application, state)
             .await
-            .map_err(|e| PyRuntimeError::new_err(format!("Error running server; {}", e)))
+            .map_err(|e| PyRuntimeError::new_err(format!("Error running server: {}", e)))
     })
 }
 

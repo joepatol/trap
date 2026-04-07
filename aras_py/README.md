@@ -33,7 +33,7 @@ aras serve my_app.main:app
 Install using uv
 
 ```bash
-uv lock && maturin develop --uv --extras dev
+uv venv .venv && source .venv/bin/activate && maturin develop --uv --extras dev
 ```
 
 Install using pip
@@ -58,12 +58,6 @@ pytest
 All server configuration is passed from Python to Rust without any upfront checks. Invalid values such as `port=0`, `concurrency_limit=0`, or negative timeouts reach Rust and fail with low-quality error messages. Basic bounds and type validation in the Python layer would produce actionable errors before the server starts.
 
 ## Medium Priority
-
-### Document the effective default for `max_concurrency=None`
-The Python API accepts `None` for `max_concurrency`, which is mapped to an internal Rust default. Neither the function signature nor the docstring documents what that default is. Users have no way to know what concurrency limit they are running under without reading the Rust source.
-
-### Add a `--workers` CLI option
-The CLI has no support for multiple worker processes. Running multiple processes behind a load balancer is the standard production scaling model for Python ASGI apps. Without this option the CLI is not viable as a production deployment tool.
 
 ### Simplify the `serve_python` Rust function signature
 The Rust function exported to Python takes approximately twelve positional arguments. Adding a new server configuration option requires changes in three places: the Rust function signature, the Python call site, and the CLI. Grouping configuration into a single struct or dict argument would reduce this coupling and make the interface more maintainable.

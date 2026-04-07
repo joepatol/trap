@@ -125,6 +125,12 @@ def cli() -> None:
     show_default=True,
 )
 @click.option(
+    "--worker-mode",
+    is_flag=True,
+    help="Run in worker mode, which is optimized for running multiple workers behind a load balancer. Auto-enabled when --workers > 1.",
+    default=False,
+)
+@click.option(
     "--reload",
     is_flag=True,
     help="Enable hot reload for development. Automatically restarts the server when code changes.",
@@ -157,6 +163,7 @@ def serve(
     no_auto_date_header: bool,
     sensitive_headers: list[str] | None = None,
     workers: int = 1,
+    worker_mode: bool = False,
     reload: bool = False,
     reload_path: list[str | Path] = ["."],
 ) -> None:
@@ -183,5 +190,6 @@ def serve(
         auto_date_header=not no_auto_date_header,
         sensitive_headers=sensitive_headers,
         workers=workers,
+        worker_mode=worker_mode,
         reload=reload_config,
     )
