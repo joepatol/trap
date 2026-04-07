@@ -2,7 +2,8 @@ from pathlib import Path
 
 import click
 
-from .serve import serve as serve_app, ReloadConfig
+from .serve import ReloadConfig
+from .serve import serve as serve_app
 from .types import LogLevel
 
 

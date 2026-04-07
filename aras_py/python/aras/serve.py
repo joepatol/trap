@@ -4,8 +4,8 @@ import multiprocessing
 import os
 import signal
 import sys
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from watchfiles import BaseFilter, run_process
 from watchfiles.main import Change

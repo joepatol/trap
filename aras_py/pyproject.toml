@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "aras"
-version = "1.0.0"
+version = "0.5.0"
 requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Rust",
