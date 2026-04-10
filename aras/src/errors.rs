@@ -11,20 +11,19 @@ impl<T: Debug + Display> DebugDisplay for T {}
 // Errors the ASGI server could raise
 #[derive(Error, Debug, Clone)]
 pub enum Error {
+    /// Ad-hoc error
     #[error("{0}")]
     Custom(String),
 
+    /// Protocol errors
     #[error(transparent)]
     HTTP(#[from] Arc<http::Error>),
-
-    #[error("Disconnect")]
-    Disconnect,
 
     #[error(transparent)]
     WebsocketError(#[from] Arc<fastwebsockets::WebSocketError>),
 
     /// Application errors
-    #[error("Application error: {0}")]
+    #[error("{0}")]
     ApplicationError(Arc<dyn DebugDisplay + Send + Sync>),
 
     #[error("Application is not running")]

@@ -80,17 +80,13 @@ async fn startup_loop(
         debug!("Lifespan protocol appears unsupported: {e}");
         return Ok(false);
     }
-    match tokio::time::timeout(timeout, receive_from.receive()).await {
-        Ok(Ok(ASGISendEvent::StartupComplete(_))) => Ok(true),
-        Ok(Ok(ASGISendEvent::StartupFailed(event))) => Err(ArasError::custom(event.message)),
+    match tokio::time::timeout(timeout, receive_from.receive()).await.map_err(ArasError::from)? {
+        Ok(ASGISendEvent::StartupComplete(_)) => Ok(true),
+        Ok(ASGISendEvent::StartupFailed(event)) => Err(ArasError::custom(event.message)),
         // The app received the startup event but sent an unrecognised response.
-        Ok(Ok(msg)) => Err(ArasError::unexpected_asgi_message(&format!("{msg:?}"))),
+        Ok(msg) => Err(ArasError::unexpected_asgi_message(&format!("{msg:?}"))),
         // The app received the startup event but exited or errored without responding.
-        Ok(Err(e)) => Err(e.into()),
-        // The app received the startup event but did not respond within the timeout.
-        Err(_) => Err(ArasError::custom(
-            "Application startup timed out".to_string(),
-        )),
+        Err(e) => Err(e.into()),
     }
 }
 

@@ -99,7 +99,7 @@ impl ApplicationHandle {
         let maybe_recv = self.receiver.lock().await.take();
 
         // If it's not available, another caller already awaited it and cached the result.
-        // If both are `None`, the implementation is incorrect.
+        // If both are `None`, the application is not running while we never stored a result.
         if maybe_recv.is_none() {
             if let Some(result) = self.read_cached().await {
                 return result;
