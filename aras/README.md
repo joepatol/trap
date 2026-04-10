@@ -14,16 +14,10 @@ run `cargo test`.
 
 ## High Priority
 
-### Replace `panic!` in `ApplicationHandle` with a returned error
-`ApplicationHandle::wait_for_completion` panics if an internal invariant is violated. In async Tokio code, panicking inside a spawned task silently kills that task. This should return an `ArasError` instead so callers can observe and handle the failure.
-
 ## Medium Priority
 
 ### Use `Arc<State>` in `ScopeFactory`
 `ScopeFactory` clones the application state on every request. If the `State` type is non-trivial this becomes a per-request allocation. Wrapping it in `Arc` would allow cheap reference-counted sharing across requests without copying.
-
-### Fix WebSocket close code on clean app exit
-When the ASGI application exits without explicitly sending a close frame, the connection is closed with code `1011 Internal Error`. A normal application exit should produce `1000 Normal Closure`. The current behavior misreports clean shutdowns as errors to the client.
 
 ## Low Priority
 

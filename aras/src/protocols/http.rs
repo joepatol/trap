@@ -1,5 +1,4 @@
 use std::fmt::Display;
-use std::sync::Arc;
 use std::time::Duration;
 
 use asgispec::prelude::*;
@@ -82,8 +81,8 @@ impl HTTPHandler {
         let response_start_event =
             match tokio::time::timeout(self.timeout, receive_from_app.receive()).await? {
                 Ok(ASGISendEvent::HTTPResponseStart(msg)) => msg,
-                Ok(msg) => return Err(ArasError::unexpected_asgi_message(Arc::new(msg))),
-                Err(e) => return Err(e),
+                Ok(msg) => return Err(ArasError::unexpected_asgi_message(&format!("{msg:?}"))),
+                Err(e) => return Err(e.into()),
             };
 
         let timeout_for_stream = self.timeout;
@@ -98,8 +97,8 @@ impl HTTPHandler {
                         more_data = msg.more_body;
                         yield Ok(Frame::data(msg.body))
                     },
-                    Ok(msg) => yield Err(ArasError::unexpected_asgi_message(Arc::new(msg))),
-                    Err(e) => yield Err(e),
+                    Ok(msg) => yield Err(ArasError::unexpected_asgi_message(&format!("{msg:?}"))),
+                    Err(e) => yield Err(e.into()),
                 };
             }
         };
@@ -315,7 +314,7 @@ mod tests {
         let request = build_request("");
         let send_to = SendToAppCollector::new();
         let receive_from =
-            DeterministicReceiveFromApp::new(vec![Err(ArasError::custom("ReceiveFromApp failed"))]);
+            DeterministicReceiveFromApp::new(vec![Err(ArasError::custom("ReceiveFromApp failed").into())]);
 
         let response = handler.handle(send_to, receive_from, request).await;
 
@@ -333,7 +332,7 @@ mod tests {
                 Bytes::from("part 1 "),
                 true,
             )),
-            Err(ArasError::custom("ReceiveFromApp failed")),
+            Err(ArasError::custom("ReceiveFromApp failed").into()),
         ]);
 
         let response = handler.handle(send_to, receive_from, request).await;

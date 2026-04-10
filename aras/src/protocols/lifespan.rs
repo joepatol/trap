@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use asgispec::prelude::*;
@@ -85,9 +84,9 @@ async fn startup_loop(
         Ok(Ok(ASGISendEvent::StartupComplete(_))) => Ok(true),
         Ok(Ok(ASGISendEvent::StartupFailed(event))) => Err(ArasError::custom(event.message)),
         // The app received the startup event but sent an unrecognised response.
-        Ok(Ok(msg)) => Err(ArasError::unexpected_asgi_message(Arc::new(msg))),
+        Ok(Ok(msg)) => Err(ArasError::unexpected_asgi_message(&format!("{msg:?}"))),
         // The app received the startup event but exited or errored without responding.
-        Ok(Err(e)) => Err(e),
+        Ok(Err(e)) => Err(e.into()),
         // The app received the startup event but did not respond within the timeout.
         Err(_) => Err(ArasError::custom(
             "Application startup timed out".to_string(),
@@ -106,8 +105,8 @@ async fn shutdown_loop(
     match tokio::time::timeout(timeout, receive_from.receive()).await? {
         Ok(ASGISendEvent::ShutdownComplete(_)) => Ok(()),
         Ok(ASGISendEvent::ShutdownFailed(event)) => Err(ArasError::custom(event.message)),
-        Ok(msg) => Err(ArasError::unexpected_asgi_message(Arc::new(msg))),
-        Err(e) => Err(e),
+        Ok(msg) => Err(ArasError::unexpected_asgi_message(&format!("{msg:?}"))),
+        Err(e) => Err(e.into()),
     }
 }
 
@@ -166,7 +165,7 @@ mod tests {
         let handler = LifespanHandler::new(Duration::from_secs(5));
         let send_to = SendToAppCollector::new();
         let receive_from =
-            DeterministicReceiveFromApp::new(vec![Err(ArasError::custom("Startup failed"))]);
+            DeterministicReceiveFromApp::new(vec![Err(ArasError::custom("Startup failed").into())]);
 
         let result = handler.startup(send_to, receive_from).await;
 
@@ -269,7 +268,7 @@ mod tests {
     async fn test_error_on_shutdown() {
         let send_to = SendToAppCollector::new();
         let receive_from =
-            DeterministicReceiveFromApp::new(vec![Err(ArasError::custom("error during shutdown"))]);
+            DeterministicReceiveFromApp::new(vec![Err(ArasError::custom("error during shutdown").into())]);
         let mut handler =
             StartedLifespanHandler::new(send_to, receive_from, true, Duration::from_secs(5));
 

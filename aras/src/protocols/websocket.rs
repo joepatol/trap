@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 use std::fmt::Display;
 use std::result::Result as StdResult;
-use std::sync::Arc;
 use std::time::Duration;
 
 use asgispec::events::{WebsocketAcceptEvent, WebsocketCloseEvent, WebsocketSendEvent};
@@ -19,7 +18,7 @@ use hyper::Request;
 use log::{error, info};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
+use crate::communication::{ApplicationResult, CommunicationResult, ReceiveFromASGIApp, SendToASGIApp};
 use crate::types::Response;
 use crate::{ArasError, ArasResult};
 
@@ -120,7 +119,7 @@ impl TryFrom<ASGISendEvent> for ConnectResponse {
         match value {
             ASGISendEvent::WebsocketAccept(msg) => ConnectResponse::try_from(msg),
             ASGISendEvent::WebsocketClose(msg) => ConnectResponse::try_from(msg),
-            msg => Err(ArasError::unexpected_asgi_message(Arc::new(msg))),
+            msg => Err(ArasError::unexpected_asgi_message(&format!("{msg:?}"))),
         }
     }
 }
@@ -157,24 +156,14 @@ impl TryFrom<WebsocketCloseEvent> for ConnectResponse {
     }
 }
 
-struct Context<S, R, W>
-where
-    W: AsyncRead + AsyncWrite + Unpin,
-    S: SendToASGIApp,
-    R: ReceiveFromASGIApp,
-{
+struct Context<S, R, W> {
     frame_builder: FrameBuilder,
     send_to_app: S,
     receive_from_app: R,
     websocket: FragmentCollector<W>,
 }
 
-impl<S, R, W> Context<S, R, W>
-where
-    W: AsyncRead + AsyncWrite + Unpin,
-    S: SendToASGIApp,
-    R: ReceiveFromASGIApp,
-{
+impl<S, R, W> Context<S, R, W> {
     pub fn new(
         max_frame_size: usize,
         send_to_app: S,
@@ -191,6 +180,9 @@ where
     }
 }
 
+trait Websocket: AsyncRead + AsyncWrite + Unpin {}
+impl<T: AsyncRead + AsyncWrite + Unpin> Websocket for T {}
+
 enum State {
     Starting,
     Running,
@@ -200,9 +192,8 @@ enum State {
 impl State {
     pub async fn on_event<W, S, R>(&self, event: Event, ctx: &mut Context<S, R, W>) -> Self
     where
-        W: AsyncRead + AsyncWrite + Unpin,
+        W: Websocket,
         S: SendToASGIApp,
-        R: ReceiveFromASGIApp,
     {
         if let Self::Closed = self {
             return Self::Closed;
@@ -212,6 +203,7 @@ impl State {
             Event::FrameReceived(frame) => self.on_frame_received(frame, ctx).await,
             Event::ASGIEventReceived(asgi) => self.on_asgi_received(asgi, ctx).await,
             Event::ErrorOccurred(error) => self.on_error(error, ctx).await,
+            Event::ConnectionClosed => self.close(CloseCode::Normal.into(), "Connection closed".into(), ctx).await,
         }
     }
 
@@ -221,9 +213,8 @@ impl State {
         ctx: &mut Context<S, R, W>,
     ) -> Self
     where
-        W: AsyncRead + AsyncWrite + Unpin,
+        W: Websocket,
         S: SendToASGIApp,
-        R: ReceiveFromASGIApp,
     {
         if let ASGIReceiveEvent::WebsocketDisconnect(msg) = frame {
             return self.close(msg.code, msg.reason, ctx).await;
@@ -231,7 +222,7 @@ impl State {
 
         match ctx.send_to_app.send(frame).await {
             Ok(_) => Self::Running,
-            Err(e) => self.on_error(e, ctx).await,
+            Err(e) => self.on_error(e.into(), ctx).await,
         }
     }
 
@@ -241,9 +232,8 @@ impl State {
         ctx: &mut Context<S, R, W>,
     ) -> Self
     where
-        W: AsyncRead + AsyncWrite + Unpin,
+        W: Websocket,
         S: SendToASGIApp,
-        R: ReceiveFromASGIApp,
     {
         let ws_send = match asgi {
             ASGISendEvent::WebsocketSend(msg) => msg,
@@ -252,7 +242,7 @@ impl State {
             }
             _ => {
                 return self
-                    .on_error(ArasError::unexpected_asgi_message(Arc::new(asgi)), ctx)
+                    .on_error(ArasError::unexpected_asgi_message(&format!("{asgi:?}")), ctx)
                     .await
             }
         };
@@ -270,9 +260,8 @@ impl State {
 
     async fn on_error<W, S, R>(&self, error: ArasError, ctx: &mut Context<S, R, W>) -> Self
     where
-        W: AsyncRead + AsyncWrite + Unpin,
+        W: Websocket,
         S: SendToASGIApp,
-        R: ReceiveFromASGIApp,
     {
         error!("Error during websocket connection: {}", error);
         self.close(CloseCode::Error.into(), "Internal server error".into(), ctx)
@@ -281,9 +270,8 @@ impl State {
 
     async fn close<W, S, R>(&self, code: u16, msg: String, ctx: &mut Context<S, R, W>) -> Self
     where
-        W: AsyncRead + AsyncWrite + Unpin,
+        W: Websocket,
         S: SendToASGIApp,
-        R: ReceiveFromASGIApp,
     {
         info!("Closing websocket with code {code}");
         let frame = Frame::close(code, msg.as_bytes());
@@ -297,14 +285,14 @@ impl State {
 enum Event {
     FrameReceived(ASGIReceiveEvent),
     ASGIEventReceived(ASGISendEvent),
+    ConnectionClosed,
     ErrorOccurred(ArasError),
 }
 
 impl Event {
     pub async fn next<S, R, W>(ctx: &mut Context<S, R, W>) -> Self
     where
-        W: AsyncRead + AsyncWrite + Unpin,
-        S: SendToASGIApp,
+        W: Websocket,
         R: ReceiveFromASGIApp,
     {
         let ws = &mut ctx.websocket;
@@ -321,6 +309,7 @@ impl From<StdResult<Frame<'_>, WebSocketError>> for Event {
     fn from(value: StdResult<Frame<'_>, WebSocketError>) -> Self {
         match value {
             Ok(frame) => Self::from(frame),
+            Err(WebSocketError::ConnectionClosed) => Self::ConnectionClosed,
             Err(e) => Self::ErrorOccurred(e.into()),
         }
     }
@@ -348,11 +337,14 @@ impl From<Frame<'_>> for Event {
             }
             OpCode::Close => {
                 let data = bytes.unwrap_or(Bytes::new());
-                let text = String::from_utf8_lossy(&data);
-                let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(
-                    CloseCode::Normal.into(),
-                    text.into(),
-                );
+                let (code, reason) = if data.len() >= 2 {
+                    let code = u16::from_be_bytes([data[0], data[1]]);
+                    let reason = String::from_utf8_lossy(&data[2..]).into_owned();
+                    (code, reason)
+                } else {
+                    (CloseCode::Normal.into(), String::new())
+                };
+                let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(code, reason);
                 Self::FrameReceived(asgi_event)
             }
             op_code => {
@@ -362,11 +354,12 @@ impl From<Frame<'_>> for Event {
     }
 }
 
-impl From<ArasResult<ASGISendEvent>> for Event {
-    fn from(value: ArasResult<ASGISendEvent>) -> Self {
+impl From<CommunicationResult<ASGISendEvent>> for Event {
+    fn from(value: CommunicationResult<ASGISendEvent>) -> Self {
         match value {
             Ok(msg) => Self::from(msg),
-            Err(e) => Self::ErrorOccurred(e),
+            Err(ApplicationResult::Completed) => Self::ConnectionClosed,
+            Err(e) => Self::ErrorOccurred(e.into()),
         }
     }
 }
@@ -380,7 +373,7 @@ impl From<ASGISendEvent> for Event {
             ASGISendEvent::WebsocketClose(msg) => {
                 Self::ASGIEventReceived(ASGISendEvent::WebsocketClose(msg))
             }
-            event => Self::ErrorOccurred(ArasError::unexpected_asgi_message(Arc::new(event))),
+            event => Self::ErrorOccurred(ArasError::unexpected_asgi_message(&format!("{event:?}")).into()),
         }
     }
 }

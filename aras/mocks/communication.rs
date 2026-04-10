@@ -3,8 +3,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use tokio::sync::Mutex;
 
-use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
-use crate::{ArasError, ArasResult};
+use crate::communication::{ReceiveFromASGIApp, SendToASGIApp, ApplicationResult, ApplicationError, CommunicationResult};
 use asgispec::prelude::*;
 
 pub(crate) struct SendToAppFail;
@@ -16,8 +15,9 @@ impl SendToAppFail {
 }
 
 impl SendToASGIApp for SendToAppFail {
-    async fn send(&mut self, _message: ASGIReceiveEvent) -> ArasResult<()> {
-        Err(ArasError::custom("SendToAppFail always fails"))
+    async fn send(&mut self, _message: ASGIReceiveEvent) -> CommunicationResult<()> {
+        let e = ApplicationError::new("SendToAppFail always fails".to_string());
+        Err(ApplicationResult::Failed(e))
     }
 }
 
@@ -40,7 +40,7 @@ impl SendToAppCollector {
 }
 
 impl SendToASGIApp for SendToAppCollector {
-    async fn send(&mut self, message: ASGIReceiveEvent) -> ArasResult<()> {
+    async fn send(&mut self, message: ASGIReceiveEvent) -> CommunicationResult<()> {
         let mut lock = self.messages.lock().await;
         lock.push(message);
         Ok(())
@@ -49,7 +49,7 @@ impl SendToASGIApp for SendToAppCollector {
 
 #[derive(Clone, Debug)]
 pub(crate) struct DeterministicReceiveFromApp {
-    messages: Vec<ArasResult<ASGISendEvent>>,
+    messages: Vec<CommunicationResult<ASGISendEvent>>,
     index: Arc<Mutex<usize>>,
 }
 
@@ -62,7 +62,7 @@ impl Default for DeterministicReceiveFromApp {
 }
 
 impl DeterministicReceiveFromApp {
-    pub fn new(messages: Vec<ArasResult<ASGISendEvent>>) -> Self {
+    pub fn new(messages: Vec<CommunicationResult<ASGISendEvent>>) -> Self {
         Self {
             messages,
             index: Arc::new(Mutex::new(0)),
@@ -71,13 +71,14 @@ impl DeterministicReceiveFromApp {
 }
 
 impl ReceiveFromASGIApp for DeterministicReceiveFromApp {
-    async fn receive(&mut self) -> ArasResult<ASGISendEvent> {
+    async fn receive(&mut self) -> CommunicationResult<ASGISendEvent> {
         let mut index_lock = self.index.lock().await;
 
         if *index_lock >= self.messages.len() {
             // Simulate waiting for more messages that never arrive
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-            return Err(ArasError::custom("No more messages to receive"));
+            let e = ApplicationError::new("No more messages to receive".to_string());
+            return Err(ApplicationResult::Failed(e));
         }
 
         let message = self.messages[*index_lock].clone();
