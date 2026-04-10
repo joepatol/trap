@@ -65,6 +65,15 @@ where
             write!(writer, "")?;
         }
 
+        // // Source file (dimmed)
+        // println!("File: {:?}, Module path {:?}", event.metadata().file(), event.metadata().module_path());
+        // if let Some(location) = event.metadata().file() {
+        //     if ansi { write!(writer, "{}", DIM)?; }
+        //     write!(writer, "{}", location)?;
+        //     if ansi { write!(writer, "{}", RESET)?; }
+        //     write!(writer, " ")?;
+        // }
+
         // Level (colored)
         let level = *event.metadata().level();
         if ansi { write!(writer, "{}", level_color(&level))?; }

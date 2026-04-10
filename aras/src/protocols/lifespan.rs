@@ -200,7 +200,7 @@ mod tests {
 
         let result = handler.startup(send_to, receive_from).await;
 
-        assert!(result.is_err_and(|e| e.to_string() == "Application startup timed out"));
+        assert!(result.is_err_and(|e| e.to_string() == "ASGI await timeout elapsed"));
     }
 
     #[tokio::test]
