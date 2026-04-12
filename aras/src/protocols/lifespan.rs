@@ -82,7 +82,7 @@ async fn startup_loop(
     }
     match tokio::time::timeout(timeout, receive_from.receive()).await.map_err(ArasError::from)? {
         Ok(ASGISendEvent::StartupComplete(_)) => Ok(true),
-        Ok(ASGISendEvent::StartupFailed(event)) => Err(ArasError::custom(event.message)),
+        Ok(ASGISendEvent::StartupFailed(event)) => Err(ArasError::startup_failed(&event.message)),
         // The app received the startup event but sent an unrecognised response.
         Ok(msg) => Err(ArasError::unexpected_asgi_message(&format!("{msg:?}"))),
         // The app received the startup event but exited or errored without responding.
@@ -100,7 +100,7 @@ async fn shutdown_loop(
         .await?;
     match tokio::time::timeout(timeout, receive_from.receive()).await? {
         Ok(ASGISendEvent::ShutdownComplete(_)) => Ok(()),
-        Ok(ASGISendEvent::ShutdownFailed(event)) => Err(ArasError::custom(event.message)),
+        Ok(ASGISendEvent::ShutdownFailed(event)) => Err(ArasError::shutdown_failed(&event.message)),
         Ok(msg) => Err(ArasError::unexpected_asgi_message(&format!("{msg:?}"))),
         Err(e) => Err(e.into()),
     }

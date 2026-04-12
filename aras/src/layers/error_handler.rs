@@ -92,3 +92,63 @@ fn plain_response(status: u16, body_text: &'static str) -> http::Response<Unsync
         .body(body)
         .expect("error response construction is infallible")
 }
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+    use http_body_util::{Empty, Full, BodyExt};
+    use tower::{BoxError, Service, service_fn};
+    use http::{Request, Response};
+
+    use super::ErrorHandlerService;
+
+    #[tokio::test]
+    async fn test_overloaded_is_503() {
+        async fn svc(_: Request<()>) -> Result<Response<Empty<Bytes>>, BoxError> {
+            Err(Box::new(tower::load_shed::error::Overloaded::new()))
+        }
+
+        let mut service = ErrorHandlerService { inner: service_fn(svc) };
+
+        let response = service.call(Request::<()>::new(())).await.unwrap();
+        assert_eq!(response.status(), 503);
+    }
+
+    #[tokio::test]
+    async fn test_timeout_is_504() {
+        async fn svc(_: Request<()>) -> Result<Response<Empty<Bytes>>, BoxError> {
+            Err(Box::new(tower::timeout::error::Elapsed::new()))
+        }
+
+        let mut service = ErrorHandlerService { inner: service_fn(svc) };
+
+        let response = service.call(Request::<()>::new(())).await.unwrap();
+        assert_eq!(response.status(), 504);
+    }
+
+    #[tokio::test]
+    async fn test_other_error_is_500() {
+        async fn svc(_: Request<()>) -> Result<Response<Empty<Bytes>>, BoxError> {
+            Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "other error")))
+        }
+
+        let mut service = ErrorHandlerService { inner: service_fn(svc) };
+
+        let response = service.call(Request::<()>::new(())).await.unwrap();
+        assert_eq!(response.status(), 500);
+    }
+
+    #[tokio::test]
+    async fn test_success_response_passes_through() {
+        async fn svc(_: Request<()>) -> Result<Response<Full<Bytes>>, BoxError> {
+            Ok(Response::new(Full::new(Bytes::from_static(b"success"))))
+        }
+
+        let mut service = ErrorHandlerService { inner: service_fn(svc) };
+
+        let response = service.call(Request::<()>::new(())).await.unwrap();
+        assert_eq!(response.status(), 200);
+        let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(body_bytes, Bytes::from_static(b"success"));
+    }
+}

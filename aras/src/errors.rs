@@ -33,6 +33,12 @@ pub enum Error {
     #[error("Unexpected ASGI message received. {0}")]
     UnexpectedASGIMessage(Arc<dyn DebugDisplay + Send + Sync>),
 
+    #[error("{0}")]
+    StartupFailed(Arc<dyn DebugDisplay + Send + Sync>),
+
+    #[error("{0}")]
+    ShutdownFailed(Arc<dyn DebugDisplay + Send + Sync>),
+
     /// Backpressure error
     #[error("ASGI await timeout elapsed")]
     Timeout(#[from] Arc<tokio::time::error::Elapsed>),
@@ -53,6 +59,14 @@ impl Error {
 
     pub fn unexpected_asgi_message(msg: &str) -> Self {
         Self::UnexpectedASGIMessage(Arc::new(msg.to_string()))
+    }
+
+    pub fn startup_failed(msg: &str) -> Self {
+        Self::StartupFailed(Arc::new(msg.to_string()))
+    }
+
+    pub fn shutdown_failed(msg: &str) -> Self {
+        Self::ShutdownFailed(Arc::new(msg.to_string()))
     }
 }
 

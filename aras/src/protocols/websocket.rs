@@ -385,67 +385,40 @@ struct FrameBuilder {
 
 impl FrameBuilder {
     fn build(&self, asgi_event: WebsocketSendEvent) -> VecDeque<Frame<'static>> {
-        let chunks;
-        let op_code;
-        let mut frames = VecDeque::new();
-
-        if let Some(data) = asgi_event.text {
-            chunks = self.split_string(data);
-            op_code = OpCode::Text;
-        } else if let Some(data) = asgi_event.bytes {
-            chunks = self.split_bytes(data);
-            op_code = OpCode::Binary;
-        } else {
-            chunks = Vec::new();
-            op_code = OpCode::Binary;
-        }
-
-        let frame_count = chunks.len().max(1);
-
-        let first_frame = Frame::new(
-            frame_count == 1,
-            op_code,
-            None,
-            Payload::Owned(chunks.first().unwrap_or(&Bytes::new()).to_vec()),
-        );
-        frames.push_back(first_frame);
-
-        if frame_count == 1 {
-            return frames;
-        }
-
-        if frame_count > 2 {
-            for chunk in chunks.iter().skip(1).take(frame_count - 2) {
-                let frame = Frame::new(
-                    false,
-                    OpCode::Continuation,
+        let (chunks, op_code) = match (asgi_event.text, asgi_event.bytes) {
+            (Some(text), _) => (self.split_string(text), OpCode::Text),
+            (_, Some(bytes)) => (self.split_bytes(bytes), OpCode::Binary),
+            _ => {
+                return VecDeque::from([Frame::new(
+                    true,
+                    OpCode::Binary,
                     None,
-                    Payload::Owned(chunk.to_vec()),
-                );
-                frames.push_back(frame);
+                    Payload::Owned(vec![]),
+                )])
             }
-        }
+        };
 
-        let last_frame = Frame::new(
-            true,
-            OpCode::Continuation,
-            None,
-            Payload::Owned(chunks.last().unwrap_or(&Bytes::new()).to_vec()),
-        );
-        frames.push_back(last_frame);
-
-        frames
+        let total = chunks.len();
+        chunks
+            .into_iter()
+            .enumerate()
+            .map(|(i, chunk)| {
+                let fin = i == total - 1;
+                let opcode = if i == 0 { op_code } else { OpCode::Continuation };
+                Frame::new(fin, opcode, None, Payload::Owned(chunk.to_vec()))
+            })
+            .collect()
     }
 
     fn split_bytes(&self, data: Bytes) -> Vec<Bytes> {
         if data.len() <= self.max_frame_size {
             return vec![data];
-        };
+        }
 
         let mut chunks = Vec::new();
         let mut start = 0;
         while start < data.len() {
-            let end = std::cmp::min(start + self.max_frame_size, data.len());
+            let end = (start + self.max_frame_size).min(data.len());
             chunks.push(data.slice(start..end));
             start = end;
         }
@@ -453,8 +426,7 @@ impl FrameBuilder {
     }
 
     fn split_string(&self, data: String) -> Vec<Bytes> {
-        let bytes = data.into_bytes();
-        self.split_bytes(Bytes::from(bytes))
+        self.split_bytes(Bytes::from(data))
     }
 }
 
@@ -496,9 +468,11 @@ mod test_utils {
 #[cfg(test)]
 mod test_state_transitions {
     use asgispec::prelude::*;
+    use fastwebsockets::OpCode;
 
     use super::{test_utils::build_websocket_client, Context, Event, State};
     use crate::mocks::communication::{DeterministicReceiveFromApp, SendToAppCollector};
+    use crate::mocks::stream::FrameExt;
 
     #[tokio::test]
     async fn test_running_asgi_send_received() {
@@ -516,9 +490,10 @@ mod test_state_transitions {
         let new_state = state.on_event(event, &mut context).await;
 
         assert!(matches!(new_state, State::Running));
-        let written_to_stream = stream.written_unmasked().unwrap();
-        assert!(written_to_stream.len() == 1);
-        assert!(written_to_stream[0] == "hello");
+        let frames = stream.written_frames().await;
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].opcode, OpCode::Text);
+        assert_eq!(frames[0].message().unwrap(), "hello");
     }
 
     #[tokio::test]
@@ -538,9 +513,10 @@ mod test_state_transitions {
 
         assert!(matches!(new_state, State::Running));
         let send_to_app = send_to.get_messages().await;
-        assert!(send_to_app.len() == 1);
-        assert!(
-            send_to_app[0] == ASGIReceiveEvent::new_websocket_receive(None, Some("frame".into()))
+        assert_eq!(send_to_app.len(), 1);
+        assert_eq!(
+            send_to_app[0],
+            ASGIReceiveEvent::new_websocket_receive(None, Some("frame".into()))
         );
     }
 
@@ -557,11 +533,13 @@ mod test_state_transitions {
         let new_state = state.on_event(event, &mut context).await;
 
         assert!(matches!(new_state, State::Closed));
+        let frames = stream.written_frames().await;
         let send_to_app = send_to.get_messages().await;
-        let written_to_stream = stream.written_unmasked().unwrap();
-        assert!(written_to_stream.len() == 1);
-        assert!(written_to_stream[0].contains("Internal server error"));
-        assert!(send_to_app.len() == 1);
+        assert_eq!(frames.len(), 1);
+        assert!(frames[0].is_close_frame());
+        assert_eq!(frames[0].close_code().unwrap(), 1011);
+        assert!(frames[0].message().unwrap().contains("Internal server error"));
+        assert_eq!(send_to_app.len(), 1);
         assert!(matches!(
             send_to_app[0],
             ASGIReceiveEvent::WebsocketDisconnect(_)
@@ -584,11 +562,13 @@ mod test_state_transitions {
         let new_state = state.on_event(event, &mut context).await;
 
         assert!(matches!(new_state, State::Closed));
+        let frames = stream.written_frames().await;
         let send_to_app = send_to.get_messages().await;
-        let written_to_stream = stream.written_unmasked().unwrap();
-        assert!(written_to_stream.len() == 1);
-        assert!(written_to_stream[0].contains("goodbye"));
-        assert!(send_to_app.len() == 1);
+        assert_eq!(frames.len(), 1);
+        assert!(frames[0].is_close_frame());
+        assert_eq!(frames[0].close_code().unwrap(), 1000);
+        assert_eq!(frames[0].message().unwrap(), "goodbye");
+        assert_eq!(send_to_app.len(), 1);
         assert!(matches!(
             send_to_app[0],
             ASGIReceiveEvent::WebsocketDisconnect(_)
@@ -609,11 +589,13 @@ mod test_state_transitions {
         let new_state = state.on_event(event, &mut context).await;
 
         assert!(matches!(new_state, State::Closed));
+        let frames = stream.written_frames().await;
         let send_to_app = send_to.get_messages().await;
-        let written_to_stream = stream.written_unmasked().unwrap();
-        assert!(written_to_stream.len() == 1);
-        assert!(written_to_stream[0].contains("goodbye"));
-        assert!(send_to_app.len() == 1);
+        assert_eq!(frames.len(), 1);
+        assert!(frames[0].is_close_frame());
+        assert_eq!(frames[0].close_code().unwrap(), 1000);
+        assert_eq!(frames[0].message().unwrap(), "goodbye");
+        assert_eq!(send_to_app.len(), 1);
         assert!(matches!(
             send_to_app[0],
             ASGIReceiveEvent::WebsocketDisconnect(_)
@@ -634,10 +616,60 @@ mod test_state_transitions {
         let new_state = state.on_event(event, &mut context).await;
 
         assert!(matches!(new_state, State::Closed));
+        let frames = stream.written_frames().await;
         let send_to_app = send_to.get_messages().await;
-        let written_to_stream = stream.written_unmasked().unwrap();
-        assert!(written_to_stream.is_empty());
+        assert!(frames.is_empty());
         assert!(send_to_app.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_running_connection_closed() {
+        let (stream, ws) = build_websocket_client(None);
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![]);
+
+        let state = State::Running;
+        let event = Event::ConnectionClosed;
+        let mut context = Context::new(1024, send_to.clone(), receive_from, ws);
+
+        let new_state = state.on_event(event, &mut context).await;
+
+        assert!(matches!(new_state, State::Closed));
+        let frames = stream.written_frames().await;
+        let send_to_app = send_to.get_messages().await;
+        assert_eq!(frames.len(), 1);
+        assert!(frames[0].is_close_frame());
+        assert_eq!(frames[0].close_code().unwrap(), 1000);
+        assert_eq!(frames[0].message().unwrap(), "Connection closed");
+        assert!(matches!(
+            send_to_app[0],
+            ASGIReceiveEvent::WebsocketDisconnect(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_starting_connection_closed() {
+        let (stream, ws) = build_websocket_client(None);
+        let send_to = SendToAppCollector::new();
+        let receive_from = DeterministicReceiveFromApp::new(vec![]);
+
+        let state = State::Starting;
+        let event = Event::ConnectionClosed;
+        let mut context = Context::new(1024, send_to.clone(), receive_from, ws);
+
+        let new_state = state.on_event(event, &mut context).await;
+
+        assert!(matches!(new_state, State::Closed));
+        let frames = stream.written_frames().await;
+        let send_to_app = send_to.get_messages().await;
+        assert_eq!(frames.len(), 1);
+        assert!(frames[0].is_close_frame());
+        assert_eq!(frames[0].close_code().unwrap(), 1000);
+        assert_eq!(frames[0].message().unwrap(), "Connection closed");
+        assert!(matches!(
+            send_to_app[0],
+            ASGIReceiveEvent::WebsocketDisconnect(_)
+        ));
     }
 }
 
@@ -650,11 +682,13 @@ mod test_handler {
 
     use asgispec::prelude::*;
     use bytes::Bytes;
+    use fastwebsockets::OpCode;
     use http::Request;
     use tokio::io::{AsyncRead, AsyncWrite};
 
     use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
     use crate::mocks::communication::{DeterministicReceiveFromApp, SendToAppCollector};
+    use crate::mocks::stream::FrameExt;
 
     fn build_websocket_request() -> Request<String> {
         Request::builder()
@@ -698,14 +732,18 @@ mod test_handler {
         let ctx = Context::new(1024, send_to.clone(), receive_from, ws);
         run_ws_until_complete(ctx).await;
 
-        let written_to_stream = stream.written_unmasked().unwrap();
-        assert!(written_to_stream.len() == 3);
-        assert!(written_to_stream[0] == "hello client");
-        assert!(written_to_stream[1] == "im the server");
-        assert!(written_to_stream[2].contains("goodbye"));
+        let frames = stream.written_frames().await;
+        assert_eq!(frames.len(), 3);
+        assert_eq!(frames[0].opcode, OpCode::Text);
+        assert_eq!(frames[0].message().unwrap(), "hello client");
+        assert_eq!(frames[1].opcode, OpCode::Text);
+        assert_eq!(frames[1].message().unwrap(), "im the server");
+        assert!(frames[2].is_close_frame());
+        assert_eq!(frames[2].close_code().unwrap(), 1000);
+        assert_eq!(frames[2].message().unwrap(), "goodbye");
 
         let send_to_app = send_to.get_messages().await;
-        assert!(send_to_app.len() == 1);
+        assert_eq!(send_to_app.len(), 1);
         assert!(matches!(
             send_to_app[0],
             ASGIReceiveEvent::WebsocketDisconnect(_)
@@ -727,10 +765,12 @@ mod test_handler {
         let ctx = Context::new(10, send_to.clone(), receive_from, ws);
         run_ws_until_complete(ctx).await;
 
-        let written_to_stream = stream.written_unmasked().unwrap();
-        assert!(written_to_stream.len() == 5);
-        assert!(written_to_stream[0] == "I would ve");
-        assert!(written_to_stream[3] == "plit up");
+        let frames = stream.written_frames().await;
+        assert_eq!(frames.len(), 5);
+        assert_eq!(frames[0].opcode, OpCode::Text);
+        assert_eq!(frames[0].message().unwrap(), "I would ve");
+        assert_eq!(frames[3].message().unwrap(), "plit up");
+        assert!(frames[4].is_close_frame());
     }
 
     #[tokio::test]
@@ -820,3 +860,122 @@ mod test_handler {
     }
 }
 
+#[cfg(test)]
+mod test_frame_builder {
+    use asgispec::events::WebsocketSendEvent;
+    use bytes::Bytes;
+    use fastwebsockets::OpCode;
+
+    use super::FrameBuilder;
+
+    fn text_event(s: &str) -> WebsocketSendEvent {
+        WebsocketSendEvent::new(None, Some(s.to_string()))
+    }
+
+    fn binary_event(b: &[u8]) -> WebsocketSendEvent {
+        WebsocketSendEvent::new(Some(Bytes::copy_from_slice(b)), None)
+    }
+
+    fn empty_event() -> WebsocketSendEvent {
+        WebsocketSendEvent::new(None, None)
+    }
+
+    #[test]
+    fn test_single_text_frame() {
+        let builder = FrameBuilder::new(1024);
+        let frames = builder.build(text_event("hello"));
+        assert_eq!(frames.len(), 1);
+        assert!(frames[0].fin);
+        assert_eq!(frames[0].opcode, OpCode::Text);
+        assert_eq!(&frames[0].payload[..], b"hello");
+    }
+
+    #[test]
+    fn test_single_binary_frame() {
+        let builder = FrameBuilder::new(1024);
+        let frames = builder.build(binary_event(b"hello"));
+        assert_eq!(frames.len(), 1);
+        assert!(frames[0].fin);
+        assert_eq!(frames[0].opcode, OpCode::Binary);
+        assert_eq!(&frames[0].payload[..], b"hello");
+    }
+
+    #[test]
+    fn test_empty_event_returns_single_empty_binary_frame() {
+        let builder = FrameBuilder::new(1024);
+        let frames = builder.build(empty_event());
+        assert_eq!(frames.len(), 1);
+        assert!(frames[0].fin);
+        assert_eq!(frames[0].opcode, OpCode::Binary);
+        assert_eq!(frames[0].payload.len(), 0);
+    }
+
+    #[test]
+    fn test_data_exactly_at_max_frame_size_is_one_frame() {
+        let builder = FrameBuilder::new(5);
+        let frames = builder.build(text_event("hello"));
+        assert_eq!(frames.len(), 1);
+        assert!(frames[0].fin);
+        assert_eq!(frames[0].opcode, OpCode::Text);
+    }
+
+    #[test]
+    fn test_data_one_byte_over_max_frame_size_splits_into_two_frames() {
+        let builder = FrameBuilder::new(5);
+        let frames = builder.build(text_event("hello!"));
+        assert_eq!(frames.len(), 2);
+        assert!(!frames[0].fin);
+        assert_eq!(frames[0].opcode, OpCode::Text);
+        assert_eq!(&frames[0].payload[..], b"hello");
+        assert!(frames[1].fin);
+        assert_eq!(frames[1].opcode, OpCode::Continuation);
+        assert_eq!(&frames[1].payload[..], b"!");
+    }
+
+    #[test]
+    fn test_text_splits_into_multiple_frames_with_correct_opcodes_and_fin() {
+        let builder = FrameBuilder::new(4);
+        // "abcdefghij" -> "abcd", "efgh", "ij" -> 3 frames
+        let frames = builder.build(text_event("abcdefghij"));
+        assert_eq!(frames.len(), 3);
+        // First frame: original opcode, no FIN
+        assert!(!frames[0].fin);
+        assert_eq!(frames[0].opcode, OpCode::Text);
+        assert_eq!(&frames[0].payload[..], b"abcd");
+        // Middle frame: Continuation, no FIN
+        assert!(!frames[1].fin);
+        assert_eq!(frames[1].opcode, OpCode::Continuation);
+        assert_eq!(&frames[1].payload[..], b"efgh");
+        // Last frame: Continuation, FIN set
+        assert!(frames[2].fin);
+        assert_eq!(frames[2].opcode, OpCode::Continuation);
+        assert_eq!(&frames[2].payload[..], b"ij");
+    }
+
+    #[test]
+    fn test_binary_splits_into_multiple_frames() {
+        let builder = FrameBuilder::new(3);
+        let frames = builder.build(binary_event(b"abcdefgh"));
+        // "abc", "def", "gh" -> 3 frames
+        assert_eq!(frames.len(), 3);
+        assert!(!frames[0].fin);
+        assert_eq!(frames[0].opcode, OpCode::Binary);
+        assert_eq!(&frames[0].payload[..], b"abc");
+        assert!(!frames[1].fin);
+        assert_eq!(frames[1].opcode, OpCode::Continuation);
+        assert_eq!(&frames[1].payload[..], b"def");
+        assert!(frames[2].fin);
+        assert_eq!(frames[2].opcode, OpCode::Continuation);
+        assert_eq!(&frames[2].payload[..], b"gh");
+    }
+
+    #[test]
+    fn test_text_takes_priority_over_bytes_when_both_present() {
+        let builder = FrameBuilder::new(1024);
+        let event = WebsocketSendEvent::new(Some(Bytes::from("binary")), Some("text".to_string()));
+        let frames = builder.build(event);
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].opcode, OpCode::Text);
+        assert_eq!(&frames[0].payload[..], b"text");
+    }
+}
