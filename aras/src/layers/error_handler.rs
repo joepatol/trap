@@ -45,9 +45,9 @@ impl<S: Clone> Clone for ErrorHandlerService<S> {
     }
 }
 
-impl<S, B, ResBody> Service<Request<B>> for ErrorHandlerService<S>
+impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for ErrorHandlerService<S>
 where
-    S: Service<Request<B>, Response = http::Response<ResBody>, Error = BoxError>,
+    S: Service<Request<ReqBody>, Response = http::Response<ResBody>, Error = BoxError>,
     S::Future: Send + 'static,
     ResBody: Body<Data = Bytes> + Send + 'static,
     ResBody::Error: Into<BoxError>,
@@ -60,7 +60,7 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, request: Request<B>) -> Self::Future {
+    fn call(&mut self, request: Request<ReqBody>) -> Self::Future {
         let fut = self.inner.call(request);
         Box::pin(async move {
             match fut.await {
