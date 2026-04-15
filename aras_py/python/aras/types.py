@@ -1,11 +1,9 @@
-from typing import (Any, Awaitable, Callable, Literal, MutableMapping,
+from typing import (Any, Awaitable, Callable, MutableMapping,
                     Protocol, TypeAlias)
 
 Send: TypeAlias = Callable[[MutableMapping[str, Any]], Awaitable[None]]
 Receive: TypeAlias = Callable[[], Awaitable[MutableMapping[str, Any]]]
 Scope: TypeAlias = MutableMapping[str, Any]
-
-LogLevel = Literal["DEBUG", "INFO", "WARN", "TRACE", "OFF", "ERROR"]
 
 
 class ASGIApplication(Protocol):
