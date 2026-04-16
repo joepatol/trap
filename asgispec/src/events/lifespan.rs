@@ -1,4 +1,7 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+use crate::spec::DisplaySerde;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LifespanStartupEvent;
 
 impl LifespanStartupEvent {
@@ -9,12 +12,11 @@ impl LifespanStartupEvent {
 
 impl std::fmt::Display for LifespanStartupEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: lifespan.startup")?;
-        Ok(())
+        DisplaySerde::from(self).fmt(f)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LifespanStartupCompleteEvent;
 
 impl LifespanStartupCompleteEvent {
@@ -25,12 +27,11 @@ impl LifespanStartupCompleteEvent {
 
 impl std::fmt::Display for LifespanStartupCompleteEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: lifespan.startup.complete")?;
-        Ok(())
+        DisplaySerde::from(self).fmt(f)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LifespanStartupFailedEvent {
     pub message: String,
 }
@@ -45,13 +46,11 @@ impl LifespanStartupFailedEvent {
 
 impl std::fmt::Display for LifespanStartupFailedEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: lifespan.startup.failed")?;
-        writeln!(f, "message: {}", self.message)?;
-        Ok(())
+        DisplaySerde::from(self).fmt(f)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LifespanShutdownEvent;
 
 impl LifespanShutdownEvent {
@@ -62,12 +61,11 @@ impl LifespanShutdownEvent {
 
 impl std::fmt::Display for LifespanShutdownEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: lifespan.shutdown")?;
-        Ok(())
+        DisplaySerde::from(self).fmt(f)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LifespanShutdownCompleteEvent;
 
 impl LifespanShutdownCompleteEvent {
@@ -78,12 +76,11 @@ impl LifespanShutdownCompleteEvent {
 
 impl std::fmt::Display for LifespanShutdownCompleteEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: lifespan.shutdown.complete")?;
-        Ok(())
+        DisplaySerde::from(self).fmt(f)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LifespanShutdownFailedEvent {
     pub message: String,
 }
@@ -98,8 +95,6 @@ impl LifespanShutdownFailedEvent {
 
 impl std::fmt::Display for LifespanShutdownFailedEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: lifespan.shutdown.failed")?;
-        writeln!(f, "message: {}", self.message)?;
-        Ok(())
+        DisplaySerde::from(self).fmt(f)
     }
 }

@@ -1,10 +1,10 @@
-import importlib
-import os
-import sys
+from pathlib import Path
 
 import click
-from .types import LogLevel
+
+from .serve import ReloadConfig
 from .serve import serve as serve_app
+from .types import LogLevel
 
 
 @click.group()
@@ -13,7 +13,7 @@ def cli() -> None:
 
 
 @cli.command()
-@click.argument('application', type=click.STRING)
+@click.argument("application", type=click.STRING)
 @click.option(
     "--host",
     type=str,
@@ -83,10 +83,67 @@ def cli() -> None:
     show_default=True,
 )
 @click.option(
+    "--backpressure-size",
+    type=int,
+    default=16,
+    help="Number of pending requests that will trigger backpressure",
+    show_default=True,
+)
+@click.option(
     "--max-ws-frame-size",
     type=int,
     default=64 * 1024,
     help="Set the max size of a single websocket frame in bytes",
+    show_default=True,
+)
+@click.option(
+    "--request-ids",
+    is_flag=True,
+    help="Enable generation and propagation of unique request IDs for each incoming request. The request ID will be included in logs and propagated to the ASGI application via the 'X-Request-ID' header.",
+    default=False,
+    show_default=True,
+)
+@click.option(
+    "--no-auto-date-header",
+    is_flag=True,
+    help="Disable automatic addition of the Date header in responses.",
+    default=False,
+    show_default=True,
+)
+@click.option(
+    "--sensitive-headers",
+    type=str,
+    multiple=True,
+    default=None,
+    help="Specify headers that should be treated as sensitive and redacted in logs. Can be used multiple times to specify multiple headers.",
+    show_default=True,
+)
+@click.option(
+    "--workers",
+    type=int,
+    default=1,
+    help="Number of worker processes. Each worker runs a full server instance. Cannot be combined with --reload.",
+    show_default=True,
+)
+@click.option(
+    "--worker-mode",
+    is_flag=True,
+    help="Run in worker mode, which is optimized for running multiple workers behind a load balancer. Auto-enabled when --workers > 1.",
+    default=False,
+)
+@click.option(
+    "--reload",
+    is_flag=True,
+    help="Enable hot reload for development. Automatically restarts the server when code changes.",
+    default=False,
+    show_default=True,
+)
+@click.option(
+    "--reload-path",
+    type=str,
+    multiple=True,
+    default=["."],
+    help="Specify paths to watch for changes when hot reload is enabled. Can be used multiple times to specify multiple paths.",
     show_default=True,
 )
 def serve(
@@ -101,34 +158,39 @@ def serve(
     rate_limit: tuple[int, int],
     buffer_size: int,
     backpressure_timeout: int,
+    backpressure_size: int,
     max_ws_frame_size: int,
+    request_ids: bool,
+    no_auto_date_header: bool,
+    sensitive_headers: list[str] | None = None,
+    workers: int = 1,
+    worker_mode: bool = False,
+    reload: bool = False,
+    reload_path: list[str | Path] = ["."],
 ) -> None:
-    # Insert current working directory to sys.path to make sure the dynamic import,
-    # which is referenced from the cwd, works correctly.
-    sys.path.insert(0, os.getcwd())
-    module_str, application_str = application.split(":")
+    if reload:
+        reload_config = ReloadConfig(paths=reload_path)
+    else:
+        reload_config = None
 
-    try:
-        module = importlib.import_module(module_str)
-        loaded_app = getattr(module, application_str)
-    except Exception as exc:
-        raise ImportError(
-            "Failed to import ASGI application."
-            "Did you provide an import string like 'my_app.main:app'?"
-            "Make sure you provided a valid path from the current working directory."
-        ) from exc
-    
     serve_app(
-        loaded_app,
-        host,
-        port,
-        log_level,
-        not no_keep_alive,
-        max_concurrency,
-        max_size_kb,
-        request_timeout,
-        rate_limit,
-        buffer_size,
-        backpressure_timeout,
-        max_ws_frame_size
+        application,
+        host=host,
+        port=port,
+        log_level=log_level,
+        keep_alive=not no_keep_alive,
+        max_concurrency=max_concurrency,
+        max_size_kb=max_size_kb,
+        request_timeout=request_timeout,
+        rate_limit=rate_limit,
+        buffer_size=buffer_size,
+        backpressure_timeout=backpressure_timeout,
+        backpressure_size=backpressure_size,
+        max_ws_frame_size=max_ws_frame_size,
+        request_ids=request_ids,
+        auto_date_header=not no_auto_date_header,
+        sensitive_headers=sensitive_headers,
+        workers=workers,
+        worker_mode=worker_mode,
+        reload=reload_config,
     )

@@ -1,0 +1,38 @@
+name: testTrap
+on: [push]
+jobs:
+  test_rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run Rust tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+      - name: Run rust linter
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+  test_python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aras_py
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.13'
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v7
+      - name: Install dependencies
+        run: uv sync --extra dev
+      - name: Run Python tests
+        run: uv run pytest tests --verbose
+      - name: Run Python type checks
+        run: uv run mypy .
+      - name: Run Python linter
+        run: uv run ruff check
+      - name: Run isort check
+        run: uv run isort . --check

@@ -1,6 +1,8 @@
 /target
 __test__.py
 note.db
+.ruff_cache
+libaras.*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

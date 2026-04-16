@@ -1,17 +1,19 @@
-use crate::spec::{ASGIScope, State};
+use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use crate::spec::{ASGIScope, DisplaySerde, State};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HTTPScope<S: State> {
-    pub type_: String,
     pub asgi: ASGIScope,
     pub http_version: String,
     pub method: String,
     pub scheme: String,
     pub path: String,
-    pub raw_path: Vec<u8>,
-    pub query_string: Vec<u8>,
+    pub raw_path: Bytes,
+    pub query_string: Bytes,
     pub root_path: String,
-    pub headers: Vec<(Vec<u8>, Vec<u8>)>,
+    pub headers: Vec<(Bytes, Bytes)>,
     pub client: Option<(String, u16)>,
     pub server: Option<(String, u16)>,
     pub state: Option<S>,
@@ -24,16 +26,15 @@ impl<S: State> HTTPScope<S> {
         method: String,
         scheme: String,
         path: String,
-        raw_path: Vec<u8>,
-        query_string: Vec<u8>,
+        raw_path: Bytes,
+        query_string: Bytes,
         root_path: String,
-        headers: Vec<(Vec<u8>, Vec<u8>)>,
+        headers: Vec<(Bytes, Bytes)>,
         client: Option<(String, u16)>,
         server: Option<(String, u16)>,
         state: Option<S>,
     ) -> Self {
         Self {
-            type_: String::from("http"),
             asgi,
             http_version,
             method,
@@ -50,41 +51,8 @@ impl<S: State> HTTPScope<S> {
     }
 }
 
-impl<S: State> std::fmt::Display for HTTPScope<S> {
+impl<S: State + Serialize> std::fmt::Display for HTTPScope<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "type: {}", self.type_)?;
-        writeln!(f, "asgi: {}", self.asgi)?;
-        writeln!(f, "http_version: {}", self.http_version)?;
-        writeln!(f, "method: {}", self.method)?;
-        writeln!(f, "scheme: {}", self.scheme)?;
-        writeln!(f, "path: {}", self.path)?;
-        writeln!(f, "raw_path: {}", String::from_utf8_lossy(&self.raw_path))?;
-        writeln!(f, "query_string: {}", String::from_utf8_lossy(&self.query_string))?;
-        writeln!(f, "root_path: {}", self.root_path)?;
-
-        writeln!(f, "headers:")?;
-        for (name, value) in &self.headers {
-            writeln!(f, "  {}: {}", String::from_utf8_lossy(name), String::from_utf8_lossy(value))?;
-        }
-
-        if let Some((ip, port)) = &self.client {
-            writeln!(f, "client: {}:{}", ip, port)?;
-        } else {
-            writeln!(f, "client: None")?;
-        }
-
-        if let Some((ip, port)) = &self.server {
-            writeln!(f, "server: {}:{}", ip, port)?;
-        } else {
-            writeln!(f, "server: None")?;
-        }
-
-        if self.state.is_some() {
-            writeln!(f, "state: {}", self.state.clone().unwrap())?;
-        } else {
-            writeln!(f, "state: None")?;
-        }
-
-        Ok(())
+        DisplaySerde::from(self).fmt(f)
     }
 }

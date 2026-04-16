@@ -1,12 +1,15 @@
+import os
+from pathlib import Path
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-SQLITE_DATABASE_URL = "sqlite:///./note.db"
+db_dir = Path(os.path.dirname(__file__)).parent.parent.parent.parent
 
-engine = create_engine(
-    SQLITE_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+SQLITE_DATABASE_URL = f"sqlite:///{db_dir}/note.db"
+
+engine = create_engine(SQLITE_DATABASE_URL, connect_args={"check_same_thread": False})
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

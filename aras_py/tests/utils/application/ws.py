@@ -38,6 +38,7 @@ html_simple = """
 </html>
 """
 
+
 @router.get("/simple")
 async def get():
     return HTMLResponse(html_simple)
@@ -108,6 +109,20 @@ class ConnectionManager:
     async def broadcast(self, message: str):
         for connection in self.active_connections:
             await connection.send_text(message)
+
+
+@router.websocket("/ws_binary_echo")
+async def websocket_binary_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    data = await websocket.receive_bytes()
+    await websocket.send_bytes(data)
+
+
+@router.websocket("/ws_server_close")
+async def websocket_server_close_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    await websocket.receive_text()
+    await websocket.close(code=1001)
 
 
 manager = ConnectionManager()

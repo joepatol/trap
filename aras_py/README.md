@@ -28,16 +28,41 @@ Or you can run you application through the ARAS cli:
 aras serve my_app.main:app
 ```
 
-## Running tests
+## Installing
 
-Install the project from the aras_py root
+Install using uv
+
+```bash
+uv venv .venv && source .venv/bin/activate && maturin develop --uv --extras dev
+```
+
+Install using pip
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate && pip install .[dev]
 ```
+
+### Running tests
 
 Now run the tests:
 
 ```bash
 pytest
 ```
+
+# Improvement Tasks
+
+## High Priority
+
+### Validate configuration before crossing the FFI boundary
+All server configuration is passed from Python to Rust without any upfront checks. Invalid values such as `port=0`, `concurrency_limit=0`, or negative timeouts reach Rust and fail with low-quality error messages. Basic bounds and type validation in the Python layer would produce actionable errors before the server starts.
+
+## Medium Priority
+
+### Simplify the `serve_python` Rust function signature
+The Rust function exported to Python takes approximately twelve positional arguments. Adding a new server configuration option requires changes in three places: the Rust function signature, the Python call site, and the CLI. Grouping configuration into a single struct or dict argument would reduce this coupling and make the interface more maintainable.
+
+## Low Priority
+
+### Document hot-reload behaviour on in-flight requests
+Hot reload uses `watchfiles.run_process()`, which performs a full process restart on file change. This terminates in-flight requests immediately with no drain period. This behaviour is acceptable for a development feature but should be documented so users are not surprised by abrupt client disconnections during reload.

@@ -1,6 +1,8 @@
-use http::Request;
 use asgispec::prelude::*;
-use asgispec::scope::{HTTPScope, WebsocketScope, LifespanScope}; 
+use asgispec::scope::{HTTPScope, LifespanScope, WebsocketScope};
+use bytes::Bytes;
+use http::{Request, HeaderMap};
+
 use crate::types::ConnectionInfo;
 
 /// Given a state build ASGI scopes for the supported protocols.
@@ -23,14 +25,10 @@ impl<S: State> ScopeFactory<S> {
             request.method().as_str().to_owned(),
             String::from("http"),
             request.uri().path().to_owned(),
-            request.uri().to_string().as_bytes().to_vec(),
-            request.uri().query().unwrap_or("").as_bytes().to_vec(),
+            Bytes::from(request.uri().to_string()),
+            Bytes::from(request.uri().query().unwrap_or("").to_owned()),
             String::from(""), // Optional, default for now
-            request
-                .headers()
-                .into_iter()
-                .map(|(name, value)| (name.as_str().as_bytes().to_vec(), value.as_bytes().to_vec()))
-                .collect(),
+            parse_headers(request.headers()),
             Some((conn.client_ip.to_owned(), conn.client_port)),
             Some((conn.server_ip.to_owned(), conn.server_port)),
             Some(self.state.clone()),
@@ -44,12 +42,15 @@ impl<S: State> ScopeFactory<S> {
             .into_iter()
             .filter(|(k, _)| k.as_str().to_lowercase() == "sec-websocket-protocol")
             .map(|(_, v)| {
-                let mut txt = String::from_utf8_lossy(&v.as_bytes().to_vec()).to_string();
+                let mut txt = String::from_utf8_lossy(v.as_bytes()).to_string();
                 txt.retain(|c| !c.is_whitespace());
                 txt
             })
-            .map(|s| s.split(",").map(|substr| substr.to_owned()).collect::<Vec<String>>())
-            .flatten()
+            .flat_map(|s| {
+                s.split(",")
+                    .map(|substr| substr.to_owned())
+                    .collect::<Vec<String>>()
+            })
             .collect();
 
         let scope = WebsocketScope::new(
@@ -57,14 +58,10 @@ impl<S: State> ScopeFactory<S> {
             format!("{:?}", request.version()),
             String::from("http"),
             request.uri().path().to_owned(),
-            request.uri().to_string().as_bytes().to_vec(),
-            request.uri().query().unwrap_or("").as_bytes().to_vec(),
+            Bytes::from(request.uri().to_string()),
+            Bytes::from(request.uri().query().unwrap_or("").to_owned()),
             String::from(""), // TODO: Optional, default for now
-            request
-                .headers()
-                .into_iter()
-                .map(|(name, value)| (name.as_str().as_bytes().to_vec(), value.as_bytes().to_vec()))
-                .collect(),
+            parse_headers(request.headers()),
             Some((conn.client_ip.to_owned(), conn.client_port)),
             Some((conn.server_ip.to_owned(), conn.server_port)),
             subprotocols,
@@ -74,6 +71,22 @@ impl<S: State> ScopeFactory<S> {
     }
 
     pub fn build_lifespan(&self) -> Scope<S> {
-        Scope::Lifespan(LifespanScope::new(ASGIScope::default(), Some(self.state.clone())))
+        Scope::Lifespan(LifespanScope::new(
+            ASGIScope::default(),
+            Some(self.state.clone()),
+        ))
     }
+}
+
+
+fn parse_headers(headers: &HeaderMap) -> Vec<(Bytes, Bytes)> {
+    headers
+        .into_iter()
+        .map(|(name, value)| {
+            (
+                Bytes::from(name.as_str().to_string()),
+                Bytes::from(value.as_bytes().to_vec()),
+            )
+        })
+        .collect()
 }

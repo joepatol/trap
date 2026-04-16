@@ -1,5 +1,4 @@
 use std::fmt::Display;
-use std::sync::Arc;
 use std::time::Duration;
 
 use asgispec::prelude::*;
@@ -12,8 +11,8 @@ use hyper::body::{Body, Frame};
 use hyper::Request;
 
 use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
-use crate::{ArasError, ArasResult};
 use crate::types::Response;
+use crate::{ArasError, ArasResult};
 
 #[derive(Constructor)]
 pub(crate) struct HTTPHandler {
@@ -38,7 +37,9 @@ impl HTTPHandler {
 
         // If sending the disconnect event fails, it's because the application
         // cannot receive any more messages. We don't care...
-        _ = send_to_app.send(ASGIReceiveEvent::new_http_disconnect()).await;
+        _ = send_to_app
+            .send(ASGIReceiveEvent::new_http_disconnect())
+            .await;
 
         Ok(response?.1)
     }
@@ -52,11 +53,12 @@ impl HTTPHandler {
         let mut stream = body.into_data_stream().boxed();
 
         while let Some(part) = tokio::time::timeout(self.timeout, stream.next()).await? {
-            let mut data = part.map_err(|e| ArasError::custom(format!("Failed to read body: {e}")))?;
+            let mut data =
+                part.map_err(|e| ArasError::custom(format!("Failed to read body: {e}")))?;
 
             let size = data.remaining();
             let bytes = data.copy_to_bytes(size);
-            more_body = stream.size_hint().1.map_or(true, |u| u > 0);
+            more_body = stream.size_hint().1.is_none_or(|u| u > 0);
 
             let msg = ASGIReceiveEvent::new_http_request(bytes, more_body);
             send_to_app.send(msg).await?;
@@ -72,12 +74,16 @@ impl HTTPHandler {
         Ok(())
     }
 
-    async fn make_response(&self, mut receive_from_app: impl ReceiveFromASGIApp + 'static) -> ArasResult<Response> {
-        let response_start_event = match tokio::time::timeout(self.timeout, receive_from_app.receive()).await? {
-            Ok(ASGISendEvent::HTTPResponseStart(msg)) => msg,
-            Ok(msg) => return Err(ArasError::unexpected_asgi_message(Arc::new(msg))),
-            Err(e) => return Err(e),
-        };
+    async fn make_response(
+        &self,
+        mut receive_from_app: impl ReceiveFromASGIApp + 'static,
+    ) -> ArasResult<Response> {
+        let response_start_event =
+            match tokio::time::timeout(self.timeout, receive_from_app.receive()).await? {
+                Ok(ASGISendEvent::HTTPResponseStart(msg)) => msg,
+                Ok(msg) => return Err(ArasError::unexpected_asgi_message(&format!("{msg:?}"))),
+                Err(e) => return Err(e.into()),
+            };
 
         let timeout_for_stream = self.timeout;
         let body_stream = async_stream::stream! {
@@ -91,16 +97,16 @@ impl HTTPHandler {
                         more_data = msg.more_body;
                         yield Ok(Frame::data(msg.body))
                     },
-                    Ok(msg) => yield Err(ArasError::unexpected_asgi_message(Arc::new(msg))),
-                    Err(e) => yield Err(e),
-                }
+                    Ok(msg) => yield Err(ArasError::unexpected_asgi_message(&format!("{msg:?}"))),
+                    Err(e) => yield Err(e.into()),
+                };
             }
         };
 
         let mut builder = hyper::Response::builder();
         builder = builder.status(response_start_event.status);
         for (bytes_key, bytes_value) in response_start_event.headers.into_iter() {
-            builder = builder.header(bytes_key, bytes_value);
+            builder = builder.header(bytes_key.to_vec(), bytes_value.to_vec());
         }
         let body = BoxBody::new(StreamBody::new(body_stream));
         Ok(builder.body(body)?)
@@ -111,13 +117,15 @@ impl HTTPHandler {
 mod tests {
     use asgispec::prelude::*;
     use bytes::Bytes;
+    use core::panic;
     use http::Request;
     use http_body_util::BodyExt;
-    use core::panic;
     use std::time::Duration;
 
     use super::HTTPHandler;
-    use crate::mocks::communication::{DeterministicReceiveFromApp, SendToAppCollector, SendToAppFail};
+    use crate::mocks::communication::{
+        DeterministicReceiveFromApp, SendToAppCollector, SendToAppFail,
+    };
     use crate::types::Response;
     use crate::ArasError;
 
@@ -128,7 +136,13 @@ mod tests {
     }
 
     async fn response_to_body_string(response: Response) -> String {
-        let body_bytes = response.into_body().collect().await.unwrap().to_bytes().to_vec();
+        let body_bytes = response
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec();
         String::from_utf8(body_bytes).unwrap()
     }
 
@@ -139,7 +153,10 @@ mod tests {
         let send_to = SendToAppCollector::new();
         let receive_from = DeterministicReceiveFromApp::default();
 
-        let _ = handler.handle(send_to.clone(), receive_from, request).await.unwrap();
+        let _ = handler
+            .handle(send_to.clone(), receive_from, request)
+            .await
+            .unwrap();
 
         let messages = send_to.get_messages().await;
 
@@ -153,7 +170,10 @@ mod tests {
         let send_to = SendToAppCollector::new();
         let receive_from = DeterministicReceiveFromApp::default();
 
-        let _ = handler.handle(send_to.clone(), receive_from, request).await.unwrap();
+        let _ = handler
+            .handle(send_to.clone(), receive_from, request)
+            .await
+            .unwrap();
 
         let messages = send_to.get_messages().await;
 
@@ -191,7 +211,10 @@ mod tests {
         let send_to = SendToAppCollector::new();
         let receive_from = DeterministicReceiveFromApp::default();
 
-        let _ = handler.handle(send_to.clone(), receive_from, request).await.unwrap();
+        let _ = handler
+            .handle(send_to.clone(), receive_from, request)
+            .await
+            .unwrap();
 
         let messages = send_to.get_messages().await;
         assert!(messages[messages.len() - 1] == ASGIReceiveEvent::new_http_disconnect());
@@ -210,7 +233,10 @@ mod tests {
             )),
         ]);
 
-        let response = handler.handle(send_to, receive_from, request).await.unwrap();
+        let response = handler
+            .handle(send_to, receive_from, request)
+            .await
+            .unwrap();
 
         assert!(response.status() == http::StatusCode::OK);
         assert!(response_to_body_string(response).await == "app sent this body");
@@ -223,11 +249,20 @@ mod tests {
         let send_to = SendToAppCollector::new();
         let receive_from = DeterministicReceiveFromApp::new(vec![
             Ok(ASGISendEvent::new_http_response_start(200, vec![])),
-            Ok(ASGISendEvent::new_http_response_body(Bytes::from("part 1 "), true)),
-            Ok(ASGISendEvent::new_http_response_body(Bytes::from("part 2"), false)),
+            Ok(ASGISendEvent::new_http_response_body(
+                Bytes::from("part 1 "),
+                true,
+            )),
+            Ok(ASGISendEvent::new_http_response_body(
+                Bytes::from("part 2"),
+                false,
+            )),
         ]);
 
-        let response = handler.handle(send_to, receive_from, request).await.unwrap();
+        let response = handler
+            .handle(send_to, receive_from, request)
+            .await
+            .unwrap();
 
         assert!(response.status() == http::StatusCode::OK);
         assert!(response_to_body_string(response).await == "part 1 part 2");
@@ -235,6 +270,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_headers_ok() {
+        let header_key_1 = Bytes::from("test");
+        let header_value_1 = Bytes::from("header");
+        let header_key_2 = Bytes::from("another");
+        let header_value_2 = Bytes::from("header");
+
         let handler = HTTPHandler::new(Duration::from_secs(10));
         let request = build_request("");
         let send_to = SendToAppCollector::new();
@@ -242,25 +282,30 @@ mod tests {
             Ok(ASGISendEvent::new_http_response_start(
                 200,
                 vec![
-                    (
-                        String::from("test").as_bytes().to_vec(),
-                        String::from("header").as_bytes().to_vec(),
-                    ),
-                    (
-                        String::from("another").as_bytes().to_vec(),
-                        String::from("header").as_bytes().to_vec(),
-                    ),
+                    (header_key_1, header_value_1),
+                    (header_key_2, header_value_2),
                 ],
             )),
-            Ok(ASGISendEvent::new_http_response_body(Bytes::from(""), false)),
+            Ok(ASGISendEvent::new_http_response_body(
+                Bytes::from(""),
+                false,
+            )),
         ]);
 
-        let response = handler.handle(send_to, receive_from, request).await.unwrap();
+        let response = handler
+            .handle(send_to, receive_from, request)
+            .await
+            .unwrap();
 
         assert!(response.status() == http::StatusCode::OK);
         let headers = response.headers();
         assert!(headers.get("test").and_then(|v| Some(v.to_str().unwrap())) == Some("header"));
-        assert!(headers.get("another").and_then(|v| Some(v.to_str().unwrap())) == Some("header"));
+        assert!(
+            headers
+                .get("another")
+                .and_then(|v| Some(v.to_str().unwrap()))
+                == Some("header")
+        );
     }
 
     #[tokio::test]
@@ -268,7 +313,8 @@ mod tests {
         let handler = HTTPHandler::new(Duration::from_secs(10));
         let request = build_request("");
         let send_to = SendToAppCollector::new();
-        let receive_from = DeterministicReceiveFromApp::new(vec![Err(ArasError::custom("ReceiveFromApp failed"))]);
+        let receive_from =
+            DeterministicReceiveFromApp::new(vec![Err(ArasError::custom("ReceiveFromApp failed").into())]);
 
         let response = handler.handle(send_to, receive_from, request).await;
 
@@ -282,8 +328,11 @@ mod tests {
         let send_to = SendToAppCollector::new();
         let receive_from = DeterministicReceiveFromApp::new(vec![
             Ok(ASGISendEvent::new_http_response_start(200, vec![])),
-            Ok(ASGISendEvent::new_http_response_body(Bytes::from("part 1 "), true)),
-            Err(ArasError::custom("ReceiveFromApp failed")),
+            Ok(ASGISendEvent::new_http_response_body(
+                Bytes::from("part 1 "),
+                true,
+            )),
+            Err(ArasError::custom("ReceiveFromApp failed").into()),
         ]);
 
         let response = handler.handle(send_to, receive_from, request).await;
@@ -302,7 +351,10 @@ mod tests {
         let send_to = SendToAppCollector::new();
         let receive_from = DeterministicReceiveFromApp::new(vec![
             Ok(ASGISendEvent::new_http_response_start(200, vec![])),
-            Ok(ASGISendEvent::new_http_response_body(Bytes::from("part 1 "), true)),
+            Ok(ASGISendEvent::new_http_response_body(
+                Bytes::from("part 1 "),
+                true,
+            )),
             Ok(ASGISendEvent::new_shutdown_complete()),
         ]);
 
@@ -313,7 +365,6 @@ mod tests {
 
         let body = response.unwrap().into_body().collect().await;
         assert!(body.is_err_and(|e| {
-            println!("{}", e);
             e.to_string() == "Unexpected ASGI message received. ShutdownComplete(LifespanShutdownCompleteEvent)"
         }));
     }

@@ -1,8 +1,8 @@
-from . import db_models, io_models
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
-from fastapi import Depends, HTTPException, status, APIRouter, Response
-from .database import get_db
 
+from . import db_models, io_models
+from .database import get_db
 
 router = APIRouter()
 
@@ -44,7 +44,8 @@ def update_note(
         )
     update_data = payload.dict(exclude_unset=True)
     note_query.filter(db_models.Note.id == noteId).update(
-        update_data, synchronize_session=False  # type: ignore
+        update_data,  # type: ignore
+        synchronize_session=False,  # type: ignore
     )
     db.commit()
     db.refresh(db_note)

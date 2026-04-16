@@ -1,12 +1,13 @@
-from .database import Base
-from sqlalchemy import TIMESTAMP, Column, String, Boolean
-from sqlalchemy.sql import func
 from fastapi_utils.guid_type import GUID, GUID_DEFAULT_SQLITE
+from sqlalchemy import TIMESTAMP, Boolean, Column, String
+from sqlalchemy.sql import func
+
+from .database import Base
 
 
 class Note(Base):
     __tablename__ = "notes"
-    
+
     id = Column(GUID, primary_key=True, default=GUID_DEFAULT_SQLITE)  # type: ignore
     title = Column(String, nullable=False)
     content = Column(String, nullable=False)

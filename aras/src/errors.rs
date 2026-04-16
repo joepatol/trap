@@ -1,6 +1,5 @@
-use std::io;
-use std::sync::Arc;
 use std::fmt::{Debug, Display};
+use std::sync::Arc;
 
 use thiserror::Error;
 
@@ -12,37 +11,35 @@ impl<T: Debug + Display> DebugDisplay for T {}
 // Errors the ASGI server could raise
 #[derive(Error, Debug, Clone)]
 pub enum Error {
+    /// Ad-hoc error
     #[error("{0}")]
     Custom(String),
 
-    #[error(transparent)]
-    Hyper(#[from] Arc<hyper::Error>),
-
+    /// Protocol errors
     #[error(transparent)]
     HTTP(#[from] Arc<http::Error>),
 
     #[error(transparent)]
-    IO(#[from] Arc<io::Error>),
-
-    #[error("Unexpected ASGI message received. {msg:?}")]
-    UnexpectedASGIMessage {
-        msg: Arc<dyn DebugDisplay + Send + Sync>,
-    },
-
-    #[error("Disconnect")]
-    Disconnect,
-
-    #[error(transparent)]
     WebsocketError(#[from] Arc<fastwebsockets::WebSocketError>),
 
-    #[error("Application error: {msg}")]
-    ApplicationError { 
-        msg: Arc<dyn DebugDisplay + Send + Sync> 
-    },
+    /// Application errors
+    #[error("{0}")]
+    ApplicationError(Arc<dyn DebugDisplay + Send + Sync>),
 
     #[error("Application is not running")]
     ApplicationNotRunning,
 
+    /// ASGI protocol error
+    #[error("Unexpected ASGI message received. {0}")]
+    UnexpectedASGIMessage(Arc<dyn DebugDisplay + Send + Sync>),
+
+    #[error("{0}")]
+    StartupFailed(Arc<dyn DebugDisplay + Send + Sync>),
+
+    #[error("{0}")]
+    ShutdownFailed(Arc<dyn DebugDisplay + Send + Sync>),
+
+    /// Backpressure error
     #[error("ASGI await timeout elapsed")]
     Timeout(#[from] Arc<tokio::time::error::Elapsed>),
 }
@@ -52,16 +49,24 @@ impl Error {
         Self::Custom(val.to_string())
     }
 
-    pub fn application_error(msg: Arc<dyn DebugDisplay + Send + Sync>) -> Self {
-        Self::ApplicationError { msg }
+    pub fn application_error(msg: &str) -> Self {
+        Self::ApplicationError(Arc::new(msg.to_string()))
     }
 
     pub fn application_not_running() -> Self {
         Self::ApplicationNotRunning
     }
 
-    pub fn unexpected_asgi_message(msg: Arc<dyn DebugDisplay + Send + Sync>) -> Self {
-        Self::UnexpectedASGIMessage { msg }
+    pub fn unexpected_asgi_message(msg: &str) -> Self {
+        Self::UnexpectedASGIMessage(Arc::new(msg.to_string()))
+    }
+
+    pub fn startup_failed(msg: &str) -> Self {
+        Self::StartupFailed(Arc::new(msg.to_string()))
+    }
+
+    pub fn shutdown_failed(msg: &str) -> Self {
+        Self::ShutdownFailed(Arc::new(msg.to_string()))
     }
 }
 
@@ -71,21 +76,9 @@ impl From<&str> for Error {
     }
 }
 
-impl From<hyper::Error> for Error {
-    fn from(value: hyper::Error) -> Self {
-        Self::Hyper(Arc::new(value))
-    }
-}
-
 impl From<http::Error> for Error {
     fn from(value: http::Error) -> Self {
         Self::HTTP(Arc::new(value))
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(value: io::Error) -> Self {
-        Self::IO(Arc::new(value))
     }
 }
 

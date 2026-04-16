@@ -1,5 +1,4 @@
 use std::fmt::Display;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
@@ -7,35 +6,39 @@ use asgispec::prelude::*;
 use fastwebsockets::upgrade::is_upgrade_request;
 use http::Request;
 use http_body::Body;
-use http_body_util::{BodyExt, Full};
-use log::error;
-use std::future::Future;
 use tower::Service;
 
 use crate::communication::CommunicationFactory;
 use crate::protocols::{HTTPHandler, WebsocketHandler};
 use crate::scope::ScopeFactory;
 use crate::types::{ConnectionInfo, Response, ServiceFuture};
-use crate::{ArasError, ArasResult};
+use crate::ArasError;
 
 #[derive(Clone)]
 pub struct ArasASGIService<A: ASGIApplication> {
     scope_factory: ScopeFactory<A::State>,
     communication_factory: CommunicationFactory<A>,
     connection: ConnectionInfo,
-    asgi_timeout_secs: u64,
+    asgi_timeout: Duration,
     max_ws_frame_size: usize,
 }
 
 impl<A: ASGIApplication> ArasASGIService<A> {
-    pub fn new(application: A, state: A::State, connection: ConnectionInfo, asgi_timeout_secs: u64, max_ws_frame_size: usize) -> Self {
+    pub fn new(
+        application: A,
+        state: A::State,
+        connection: ConnectionInfo,
+        asgi_timeout: Duration,
+        communication_queue_size: usize,
+        max_ws_frame_size: usize,
+    ) -> Self {
         let scope_factory = ScopeFactory::new(state);
-        let communication_factory = CommunicationFactory::new(application);
+        let communication_factory = CommunicationFactory::new(application, communication_queue_size);
         Self {
             scope_factory,
             communication_factory,
             connection,
-            asgi_timeout_secs,
+            asgi_timeout,
             max_ws_frame_size,
         }
     }
@@ -44,14 +47,14 @@ impl<A: ASGIApplication> ArasASGIService<A> {
         scope_factory: ScopeFactory<A::State>,
         communication_factory: CommunicationFactory<A>,
         connection: ConnectionInfo,
-        asgi_timeout_secs: u64,
+        asgi_timeout: Duration,
         max_ws_frame_size: usize,
     ) -> Self {
         Self {
             scope_factory,
             communication_factory,
             connection,
-            asgi_timeout_secs,
+            asgi_timeout,
             max_ws_frame_size,
         }
     }
@@ -73,38 +76,25 @@ where
     }
 
     fn call(&mut self, request: Request<B>) -> Self::Future {
-        let timeout = Duration::from_secs(self.asgi_timeout_secs);
         if is_upgrade_request(&request) {
-            let scope = self.scope_factory.build_websocket(&self.connection, &request);
+            let scope = self
+                .scope_factory
+                .build_websocket(&self.connection, &request);
             let (send_to_app, receive_from_app) = self.communication_factory.build(scope);
-            let handler = WebsocketHandler::new(timeout, self.max_ws_frame_size);
-            let fut = handler.handle(send_to_app, receive_from_app, request);
-            Box::pin(handle_error(fut))
+            let handler = WebsocketHandler::new(
+                self.asgi_timeout,
+                self.max_ws_frame_size,
+                format!(
+                    "{}:{}",
+                    &self.connection.client_ip, self.connection.client_port
+                ),
+            );
+            Box::pin(handler.handle(send_to_app, receive_from_app, request))
         } else {
             let scope = self.scope_factory.build_http(&self.connection, &request);
             let (send_to_app, receive_from_app) = self.communication_factory.build(scope);
-            let handler = HTTPHandler::new(timeout);
-            let fut = handler.handle(send_to_app, receive_from_app, request);
-            Box::pin(handle_error(fut))
-        }
-    }
-}
-
-async fn handle_error(fut: impl Future<Output = ArasResult<Response>>) -> ArasResult<Response> {
-    match fut.await {
-        Ok(response) => Ok(response),
-        Err(error) => {
-            error!("Error serving request: {error}");
-            let body_text = "Internal Server Error";
-            let body = Full::new(body_text.as_bytes().to_vec().into())
-                .map_err(|never| match never {})
-                .boxed();
-            let response = hyper::Response::builder()
-                .status(500)
-                .header(hyper::header::CONTENT_LENGTH, body_text.len())
-                .header(hyper::header::CONTENT_TYPE, "text/plain")
-                .body(body);
-            Ok(response.map_err(|e| Arc::new(e))?)
+            let handler = HTTPHandler::new(self.asgi_timeout);
+            Box::pin(handler.handle(send_to_app, receive_from_app, request))
         }
     }
 }
