@@ -11,14 +11,13 @@ from watchfiles import BaseFilter, run_process
 from watchfiles.main import Change
 
 from .aras import generate_cancel_token, serve_python  # type: ignore
-from .types import ASGIApplication, LogLevel
+from .types import ASGIApplication
 
 
 @dataclass
 class ServerConfig:
     host: str
     port: int
-    log_level: LogLevel
     keep_alive: bool
     max_concurrency: int | None
     max_size_kb: int
@@ -43,7 +42,6 @@ def serve(
     application: ASGIApplication | str,
     host: str = "127.0.0.1",
     port: int = 8080,
-    log_level: LogLevel = "INFO",
     keep_alive: bool = True,
     max_concurrency: int | None = None,
     max_size_kb: int = 1_000_000,
@@ -56,8 +54,6 @@ def serve(
     request_ids: bool = False,
     auto_date_header: bool = True,
     sensitive_headers: list[str] | None = None,
-    workers: int = 1,
-    worker_mode: bool = False,
     reload: ReloadConfig | None = None,
 ) -> None:
     """
@@ -80,17 +76,12 @@ def serve(
         request_ids: Whether to generate unique request IDs for each incoming request. ID is included in the response headers.
         auto_date_header: Whether to automatically add a Date header to responses.
         sensitive_headers: A list of header names to treat as sensitive. Will be redacted in logs.
-        workers: The number of worker processes to use. Must be 1 if reload is enabled.
-        worker_mode: Whether to run in worker mode, which is optimized for running multiple workers behind a load balancer. Auto-enable when workers > 1.
         reload: A ReloadConfig object to enable hot reload, or None to disable hot reload. Cannot be used with workers > 1.
     """
-    if workers > 1 and reload:
-        raise ValueError("Cannot use both 'workers' and 'reload' at the same time")
 
     config = ServerConfig(
         host=host,
         port=port,
-        log_level=log_level,
         keep_alive=keep_alive,
         max_concurrency=max_concurrency,
         max_size_kb=max_size_kb,
@@ -105,15 +96,12 @@ def serve(
         sensitive_headers=sensitive_headers,
     )
 
-    if workers > 1:
-        import_string = _resolve_import_string(application)
-        _serve_with_workers(import_string, workers, config)
-    elif reload:
+    if reload:
         import_string = _resolve_import_string(application)
         _serve_with_reload(import_string, reload, config)
     else:
         app = _import_from_string(application) if isinstance(application, str) else application
-        _serve(app, config=config, worker_mode=worker_mode)
+        _serve(app, config=config)
 
 
 def _resolve_import_string(application: ASGIApplication | str) -> str:
@@ -152,34 +140,6 @@ def _import_from_string(import_string: str) -> ASGIApplication:
     return getattr(module, attr_str)
 
 
-def _serve_with_workers(import_string: str, workers: int, config: ServerConfig) -> None:
-    processes: list[multiprocessing.Process] = []
-    for _ in range(workers):
-        p = multiprocessing.Process(
-            target=_serve_from_import_string,
-            args=(import_string,),
-            kwargs={"config": config, "worker_mode": True},
-        )
-        p.start()
-        processes.append(p)
-
-    def _terminate_workers(signum: int, frame: object) -> None:
-        for p in processes:
-            p.terminate()
-
-    signal.signal(signal.SIGTERM, _terminate_workers)
-    signal.signal(signal.SIGINT, _terminate_workers)
-
-    try:
-        for p in processes:
-            p.join()
-    except KeyboardInterrupt:
-        for p in processes:
-            p.terminate()
-        for p in processes:
-            p.join()
-
-
 def _serve_with_reload(import_string: str, config: ReloadConfig, server_config: ServerConfig) -> None:
     run_process(
         *config.paths,
@@ -204,7 +164,6 @@ def _serve_from_import_string(import_string: str, config: ServerConfig, worker_m
 def _serve(
     application: ASGIApplication,
     config: ServerConfig,
-    worker_mode: bool = False,
 ) -> None:
     loop = asyncio.new_event_loop()
     token = generate_cancel_token()
@@ -220,7 +179,6 @@ def _serve(
             addr=[int(i) for i in config.host.split(".")],
             port=config.port,
             keep_alive=config.keep_alive,
-            log_level=config.log_level,
             max_concurrency=config.max_concurrency,
             max_size_kb=config.max_size_kb,
             request_timeout=config.request_timeout,
@@ -232,6 +190,5 @@ def _serve(
             request_ids=config.request_ids,
             auto_date_header=config.auto_date_header,
             sensitive_headers=config.sensitive_headers,
-            worker_mode=worker_mode,
         )
     )

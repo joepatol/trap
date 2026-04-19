@@ -1,7 +1,7 @@
 import asyncio
 from typing import Awaitable
 
-from .types import ASGIApplication, CancelToken, LogLevel
+from .types import ASGIApplication, CancelToken
 
 def generate_cancel_token() -> CancelToken: ...
 
@@ -13,7 +13,6 @@ def serve_python(
     addr: list[int] = [127, 0, 0, 1],
     port: int = 8080,
     keep_alive: bool = True,
-    log_level: LogLevel = "INFO",
     max_concurrency: int | None = None,
     max_size_kb: int = 1_000_000,
     request_timeout: int = 180,
@@ -25,5 +24,4 @@ def serve_python(
     request_ids: bool = False,
     auto_date_header: bool = True,
     sensitive_headers: list[str] | None = None,
-    worker_mode: bool = False,
 ) -> Awaitable[None]: ...

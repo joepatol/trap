@@ -37,6 +37,5 @@ tracing = "0.1.43"
 # Other utilities
 derive_more = { version = "^1.0.0", features = ["full"] }
 thiserror = "^2.0.0"
-socket2 = "0.5"
 
 [dev-dependencies]

@@ -4,7 +4,6 @@ import click
 
 from .serve import ReloadConfig
 from .serve import serve as serve_app
-from .types import LogLevel
 
 
 @click.group()
@@ -26,13 +25,6 @@ def cli() -> None:
     type=int,
     default=8080,
     help="Bind socket to this port.",
-    show_default=True,
-)
-@click.option(
-    "--log-level",
-    type=str,
-    default="INFO",
-    help="Set the server log level",
     show_default=True,
 )
 @click.option(
@@ -126,12 +118,6 @@ def cli() -> None:
     show_default=True,
 )
 @click.option(
-    "--worker-mode",
-    is_flag=True,
-    help="Run in worker mode, which is optimized for running multiple workers behind a load balancer. Auto-enabled when --workers > 1.",
-    default=False,
-)
-@click.option(
     "--reload",
     is_flag=True,
     help="Enable hot reload for development. Automatically restarts the server when code changes.",
@@ -150,7 +136,6 @@ def serve(
     application: str,
     host: str,
     port: int,
-    log_level: LogLevel,
     no_keep_alive: bool,
     max_concurrency: int | None,
     max_size_kb: int,
@@ -164,7 +149,6 @@ def serve(
     no_auto_date_header: bool,
     sensitive_headers: list[str] | None = None,
     workers: int = 1,
-    worker_mode: bool = False,
     reload: bool = False,
     reload_path: list[str | Path] = ["."],
 ) -> None:
@@ -177,7 +161,6 @@ def serve(
         application,
         host=host,
         port=port,
-        log_level=log_level,
         keep_alive=not no_keep_alive,
         max_concurrency=max_concurrency,
         max_size_kb=max_size_kb,
@@ -190,7 +173,5 @@ def serve(
         request_ids=request_ids,
         auto_date_header=not no_auto_date_header,
         sensitive_headers=sensitive_headers,
-        workers=workers,
-        worker_mode=worker_mode,
         reload=reload_config,
     )

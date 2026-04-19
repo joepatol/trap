@@ -11,7 +11,6 @@ use pyo3_async_runtimes;
 
 mod convert;
 mod wrappers;
-mod tracing;
 
 use tokio_util::sync::CancellationToken;
 use wrappers::{PyASGIAppWrapper, PyState, PyStopServerToken};
@@ -33,7 +32,6 @@ fn generate_cancel_token() -> PyStopServerToken {
     *,
     addr = [127, 0, 0, 1],
     port = 8080,
-    log_level = "INFO",
     keep_alive = true,
     max_concurrency = None,
     max_size_kb = 1000000,
@@ -46,7 +44,6 @@ fn generate_cancel_token() -> PyStopServerToken {
     request_ids = false,
     auto_date_header = true,
     sensitive_headers = None,
-    worker_mode = false,
 ))]
 /// Serves a Python ASGI application using the ARAS server.
 ///
@@ -69,7 +66,6 @@ fn serve_python<'a>(
     event_loop: Bound<'_, PyAny>,
     addr: [u8; 4],
     port: u16,
-    log_level: &str,
     keep_alive: bool,
     max_concurrency: Option<usize>,
     max_size_kb: usize,
@@ -82,10 +78,9 @@ fn serve_python<'a>(
     request_ids: bool,
     auto_date_header: bool,
     sensitive_headers: Option<Vec<String>>,
-    worker_mode: bool,
 ) -> PyResult<Bound<'a, PyAny>> {
 
-    tracing::init(log_level, worker_mode);
+    tracing_subscriber::Registry::default();
 
     let state = PyState::new(PyDict::new(py).unbind());
     let cancel_token = token.get_cancel_token();
@@ -129,10 +124,6 @@ fn serve_python<'a>(
         builder = builder.concurrency_limit(limit);
     }
 
-    if worker_mode {
-        builder = builder.reuse_port();
-    }
-
     let asgi_server = builder.build();
 
     pyo3_async_runtimes::tokio::future_into_py_with_locals(py, task_locals, async move {
@@ -145,6 +136,7 @@ fn serve_python<'a>(
 
 #[pymodule]
 fn aras(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    pyo3_log::init();
     m.add_function(wrap_pyfunction!(serve_python, m)?)?;
     m.add_function(wrap_pyfunction!(generate_cancel_token, m)?)?;
     Ok(())
