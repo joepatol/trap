@@ -1,5 +1,5 @@
-from typing import (Any, Awaitable, Callable, MutableMapping,
-                    Protocol, TypeAlias)
+from typing import (Any, Awaitable, Callable, MutableMapping, Protocol,
+                    TypeAlias)
 
 Send: TypeAlias = Callable[[MutableMapping[str, Any]], Awaitable[None]]
 Receive: TypeAlias = Callable[[], Awaitable[MutableMapping[str, Any]]]
