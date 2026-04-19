@@ -156,9 +156,9 @@ def _files_changed_callback(file_changes: set[tuple[Change, str]]) -> None:
     print(f"Files changed: {':'.join(changed_files)}.\nRestarting server...")
 
 
-def _serve_from_import_string(import_string: str, config: ServerConfig, worker_mode: bool = False) -> None:
+def _serve_from_import_string(import_string: str, config: ServerConfig) -> None:
     app = _import_from_string(import_string)
-    _serve(app, worker_mode=worker_mode, config=config)
+    _serve(app, config=config)
 
 
 def _serve(
