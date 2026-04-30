@@ -2,7 +2,6 @@ from pathlib import Path
 
 import click
 
-from .serve import ReloadConfig
 from .serve import serve as serve_app
 
 
@@ -148,14 +147,7 @@ def serve(
     request_ids: bool,
     no_auto_date_header: bool,
     sensitive_headers: list[str] | None = None,
-    workers: int = 1,
-    reload: bool = False,
-    reload_path: list[str | Path] = ["."],
 ) -> None:
-    if reload:
-        reload_config = ReloadConfig(paths=list(reload_path) or None)
-    else:
-        reload_config = None
 
     serve_app(
         application,
@@ -173,5 +165,4 @@ def serve(
         request_ids=request_ids,
         auto_date_header=not no_auto_date_header,
         sensitive_headers=sensitive_headers,
-        reload=reload_config,
     )
