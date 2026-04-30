@@ -128,8 +128,8 @@ def cli() -> None:
     "--reload-path",
     type=str,
     multiple=True,
-    default=["."],
-    help="Specify paths to watch for changes when hot reload is enabled. Can be used multiple times to specify multiple paths.",
+    default=[],
+    help="Paths to watch for changes when hot reload is enabled. Defaults to the top-level package directory. Can be used multiple times.",
     show_default=True,
 )
 def serve(
@@ -153,7 +153,7 @@ def serve(
     reload_path: list[str | Path] = ["."],
 ) -> None:
     if reload:
-        reload_config = ReloadConfig(paths=reload_path)
+        reload_config = ReloadConfig(paths=list(reload_path) or None)
     else:
         reload_config = None
 

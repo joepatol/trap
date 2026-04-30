@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use asgispec::prelude::*;
 use derive_more::Constructor;
-use log::{debug, error, info};
+use tracing::{debug, error, info};
 
 use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
 use crate::{ArasError, ArasResult};

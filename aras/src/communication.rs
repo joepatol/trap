@@ -4,7 +4,7 @@ use std::sync::Arc;
 use asgispec::prelude::*;
 use async_channel::{self as channel, Receiver, Sender};
 use derive_more::derive::{Constructor, Display};
-use log::error;
+use tracing::error;
 use tokio::sync::oneshot::{self, Receiver as OneshotReceiver};
 use tokio::sync::{Mutex, RwLock};
 
@@ -89,7 +89,7 @@ impl ApplicationHandle {
         self.cached_result.read().await.clone()
     }
 
-    pub async fn wait_for_completion(&mut self) -> ApplicationResult {
+    pub async fn wait_for_completion(&self) -> ApplicationResult {
         // Return the cached result if already set, to avoid unnecessarily acquiring exclusive locks
         if let Some(result) = self.read_cached().await {
             return result;

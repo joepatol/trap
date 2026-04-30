@@ -1,6 +1,4 @@
 use bytes::Bytes;
-use log::error;
-use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::{PyBytes, PyDict, PyList, PyMapping, PyNone, PyString};
 use pyo3::{prelude::*, IntoPyObjectExt};
 use asgispec::prelude::*;
@@ -146,11 +144,6 @@ pub fn parse_websocket_send(py_map: &Bound<PyMapping>) -> PyResult<ASGISendEvent
         .get_item("text")
         .and_then(|inner| inner.extract::<String>())
         .ok();
-
-    if bytes.is_none() && text.is_none() {
-        error!("Websocket send doesn't have a valid bytes or text field");
-        return Err(PyErr::new::<PyRuntimeError, _>("Websocket send doesn't have a valid bytes or text field"))
-    };
 
     Ok(ASGISendEvent::new_websocket_send(bytes, text))
 }

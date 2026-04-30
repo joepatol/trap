@@ -1,4 +1,5 @@
 use std::fmt::{Debug, Display};
+use std::string::FromUtf8Error;
 use std::sync::Arc;
 
 use thiserror::Error;
@@ -21,6 +22,9 @@ pub enum Error {
 
     #[error(transparent)]
     WebsocketError(#[from] Arc<fastwebsockets::WebSocketError>),
+
+    #[error(transparent)]
+    WsUtf8Error(#[from] FromUtf8Error),
 
     /// Application errors
     #[error("{0}")]
