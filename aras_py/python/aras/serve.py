@@ -5,8 +5,8 @@ import signal
 import sys
 
 from .aras import generate_cancel_token, serve_python
-from .types import ASGIApplication
 from .config import ServerConfig
+from .types import ASGIApplication
 
 
 def serve(
