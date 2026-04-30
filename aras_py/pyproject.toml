@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "aras"
-version = "0.5.3"
+version = "0.5.4"
 requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Rust",
@@ -13,7 +13,6 @@ classifiers = [
 ]
 dependencies = [
     "click >= 8.0.0",
-    "watchfiles>=1.0.0",
 ]
 
 [project.scripts]

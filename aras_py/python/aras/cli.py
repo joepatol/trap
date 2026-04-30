@@ -1,8 +1,5 @@
-from pathlib import Path
-
 import click
 
-from .serve import ReloadConfig
 from .serve import serve as serve_app
 
 
@@ -128,8 +125,8 @@ def cli() -> None:
     "--reload-path",
     type=str,
     multiple=True,
-    default=["."],
-    help="Specify paths to watch for changes when hot reload is enabled. Can be used multiple times to specify multiple paths.",
+    default=[],
+    help="Paths to watch for changes when hot reload is enabled. Defaults to the top-level package directory. Can be used multiple times.",
     show_default=True,
 )
 def serve(
@@ -148,14 +145,7 @@ def serve(
     request_ids: bool,
     no_auto_date_header: bool,
     sensitive_headers: list[str] | None = None,
-    workers: int = 1,
-    reload: bool = False,
-    reload_path: list[str | Path] = ["."],
 ) -> None:
-    if reload:
-        reload_config = ReloadConfig(paths=reload_path)
-    else:
-        reload_config = None
 
     serve_app(
         application,
@@ -173,5 +163,4 @@ def serve(
         request_ids=request_ids,
         auto_date_header=not no_auto_date_header,
         sensitive_headers=sensitive_headers,
-        reload=reload_config,
     )

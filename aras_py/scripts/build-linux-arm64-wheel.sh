@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 OUTPUT_DIR="${REPO_ROOT}/target/wheels"
 IMAGE="${MATURIN_IMAGE:-ghcr.io/pyo3/maturin:latest}"
 PLATFORM="${DOCKER_PLATFORM:-linux/arm64}"

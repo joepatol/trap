@@ -25,7 +25,7 @@ impl<S: State> ScopeFactory<S> {
             request.method().as_str().to_owned(),
             String::from("http"),
             request.uri().path().to_owned(),
-            Bytes::from(request.uri().to_string()),
+            Bytes::from(request.uri().path().to_string()),
             Bytes::from(request.uri().query().unwrap_or("").to_owned()),
             String::from(""), // Optional, default for now
             parse_headers(request.headers()),
@@ -58,7 +58,7 @@ impl<S: State> ScopeFactory<S> {
             format!("{:?}", request.version()),
             String::from("http"),
             request.uri().path().to_owned(),
-            Bytes::from(request.uri().to_string()),
+            Bytes::from(request.uri().path().to_string()),
             Bytes::from(request.uri().query().unwrap_or("").to_owned()),
             String::from(""), // TODO: Optional, default for now
             parse_headers(request.headers()),

@@ -6,7 +6,7 @@ use std::{
 
 use aras_core::ArasError;
 use asgispec::prelude::*;
-use log::error;
+use tracing::error;
 use pyo3::{
     exceptions::{PyIOError, PyValueError},
     prelude::*,

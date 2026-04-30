@@ -80,8 +80,6 @@ fn serve_python<'a>(
     sensitive_headers: Option<Vec<String>>,
 ) -> PyResult<Bound<'a, PyAny>> {
 
-    tracing_subscriber::Registry::default();
-
     let state = PyState::new(PyDict::new(py).unbind());
     let cancel_token = token.get_cancel_token();
     let task_locals = pyo3_async_runtimes::TaskLocals::new(event_loop).copy_context(py)?;

@@ -7,7 +7,7 @@ use http::HeaderName;
 use hyper::server::conn::http1;
 use hyper_util::rt::{TokioIo, TokioTimer};
 use hyper_util::service::TowerToHyperService;
-use log::{error, info};
+use tracing::{error, info};
 use tokio::net::TcpListener;
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
@@ -300,8 +300,8 @@ impl ArasServer {
             )
             .layer(ErrorHandlerLayer::new())
             .layer(CompressionLayer::new())
-            .layer(RequestDecompressionLayer::new())
             .request_body_limit(self.body_limit)
+            .layer(RequestDecompressionLayer::new())
             .load_shed()
             .buffer(self.buffer_size)
             .rate_limit(self.rate_limit.0, self.rate_limit.1)
