@@ -61,8 +61,3 @@ All server configuration is passed from Python to Rust without any upfront check
 
 ### Simplify the `serve_python` Rust function signature
 The Rust function exported to Python takes approximately twelve positional arguments. Adding a new server configuration option requires changes in three places: the Rust function signature, the Python call site, and the CLI. Grouping configuration into a single struct or dict argument would reduce this coupling and make the interface more maintainable.
-
-## Low Priority
-
-### Document hot-reload behaviour on in-flight requests
-Hot reload uses `watchfiles.run_process()`, which performs a full process restart on file change. This terminates in-flight requests immediately with no drain period. This behaviour is acceptable for a development feature but should be documented so users are not surprised by abrupt client disconnections during reload.

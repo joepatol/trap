@@ -271,6 +271,13 @@ impl State {
                 .await;
         }
 
+        if let ArasError::WsInvalidCloseCode(code) = &error {
+            error!("Websocket received invalid close code: {}", code);
+            return self
+                .close(CloseCode::Protocol.into(), "Invalid close code".into(), ctx)
+                .await;
+        }
+
         error!("Error during websocket connection: {}", error);
         self.close(CloseCode::Error.into(), "Internal server error".into(), ctx)
             .await
@@ -332,6 +339,11 @@ impl From<Frame<'_>> for Event {
             Payload::BorrowedMut(b) => Some(Bytes::copy_from_slice(b)),
         };
 
+        // RFC 6455 §7.4.2: valid codes are 1000-1003, 1007-1011, 3000-4999
+        fn is_valid_close_code(code: u16) -> bool {
+            matches!(code, 1000..=1003 | 1007..=1011 | 3000..=4999)
+        }
+
         match value.opcode {
             OpCode::Text => {
                 let data = bytes.unwrap_or(Bytes::new());
@@ -350,6 +362,9 @@ impl From<Frame<'_>> for Event {
                 } else {
                     (CloseCode::Normal.into(), String::new())
                 };
+                if !is_valid_close_code(code) {
+                    return Self::ErrorOccurred(ArasError::WsInvalidCloseCode(code));
+                }
                 let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(code, reason);
                 Self::FrameReceived(asgi_event)
             }

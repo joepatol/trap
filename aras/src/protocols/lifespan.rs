@@ -4,7 +4,7 @@ use asgispec::prelude::*;
 use derive_more::Constructor;
 use tracing::{debug, error, info};
 
-use crate::communication::{ReceiveFromASGIApp, SendToASGIApp};
+use crate::communication::{ApplicationResult, ReceiveFromASGIApp, SendToASGIApp};
 use crate::{ArasError, ArasResult};
 
 #[derive(Constructor)]
@@ -86,6 +86,7 @@ async fn startup_loop(
         // The app received the startup event but sent an unrecognised response.
         Ok(msg) => Err(ArasError::unexpected_asgi_message(&format!("{msg:?}"))),
         // The app received the startup event but exited or errored without responding.
+        Err(ApplicationResult::Completed) => Ok(false),
         Err(e) => Err(e.into()),
     }
 }

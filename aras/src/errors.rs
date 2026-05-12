@@ -26,6 +26,9 @@ pub enum Error {
     #[error(transparent)]
     WsUtf8Error(#[from] FromUtf8Error),
 
+    #[error("Invalid WebSocket close code: {0}")]
+    WsInvalidCloseCode(u16),
+
     /// Application errors
     #[error("{0}")]
     ApplicationError(Arc<dyn DebugDisplay + Send + Sync>),

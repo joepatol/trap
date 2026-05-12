@@ -107,28 +107,6 @@ def cli() -> None:
     help="Specify headers that should be treated as sensitive and redacted in logs. Can be used multiple times to specify multiple headers.",
     show_default=True,
 )
-@click.option(
-    "--workers",
-    type=int,
-    default=1,
-    help="Number of worker processes. Each worker runs a full server instance. Cannot be combined with --reload.",
-    show_default=True,
-)
-@click.option(
-    "--reload",
-    is_flag=True,
-    help="Enable hot reload for development. Automatically restarts the server when code changes.",
-    default=False,
-    show_default=True,
-)
-@click.option(
-    "--reload-path",
-    type=str,
-    multiple=True,
-    default=[],
-    help="Paths to watch for changes when hot reload is enabled. Defaults to the top-level package directory. Can be used multiple times.",
-    show_default=True,
-)
 def serve(
     application: str,
     host: str,
