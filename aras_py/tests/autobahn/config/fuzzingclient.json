@@ -1,0 +1,10 @@
+{
+  "outdir": "/autobahn_reports",
+  "servers": [{
+    "agent": "aras",
+    "url": "ws://host.docker.internal:9001/ws"
+  }],
+  "cases": ["*"],
+  "exclude-cases": [],
+  "exclude-agent-cases": {}
+}
