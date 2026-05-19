@@ -4,7 +4,6 @@ import socket
 import httpx
 import pytest
 
-
 CUSTOM_HOST = "127.0.0.1"
 CUSTOM_PORT = 8081
 NO_LIFESPAN_PORT = 8082

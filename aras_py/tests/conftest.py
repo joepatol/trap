@@ -7,9 +7,9 @@ import httpx
 import pytest
 import pytest_asyncio
 
+from .apps.fastapi.main import app as asgi_app
 from .apps.protocol.main import app as custom_app
 from .apps.protocol.main import no_lifespan_app
-from .apps.fastapi.main import app as asgi_app
 
 HOST = "127.0.0.1"
 PORT = 8080
