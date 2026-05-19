@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 use std::fmt::Display;
 use std::result::Result as StdResult;
-use std::string::FromUtf8Error;
 use std::time::Duration;
 
 use asgispec::events::{WebsocketAcceptEvent, WebsocketCloseEvent, WebsocketSendEvent};
@@ -264,11 +263,22 @@ impl State {
         W: Websocket,
         S: SendToASGIApp,
     {
-        if let ArasError::WsUtf8Error(e) = &error {
-            error!("Websocket received invalid UTF-8 data: {}", e);
-            return self
-                .close(CloseCode::Invalid.into(), "Invalid UTF-8 data received".into(), ctx)
-                .await;
+        if let ArasError::WebsocketError(e) = &error {
+            match e.as_ref() {
+                WebSocketError::InvalidCloseCode | WebSocketError::InvalidCloseFrame => {
+                    error!("Websocket received invalid close frame: {}", e);
+                    return self
+                        .close(CloseCode::Protocol.into(), "Protocol error".into(), ctx)
+                        .await;
+                }
+                WebSocketError::InvalidUTF8 => {
+                    error!("Websocket received invalid UTF-8 in close frame: {}", e);
+                    return self
+                        .close(CloseCode::Invalid.into(), "Invalid UTF-8 data received".into(), ctx)
+                        .await;
+                }
+                _ => {}
+            }
         }
 
         error!("Error during websocket connection: {}", error);
@@ -335,7 +345,8 @@ impl From<Frame<'_>> for Event {
         match value.opcode {
             OpCode::Text => {
                 let data = bytes.unwrap_or(Bytes::new());
-                Self::from(String::from_utf8(data.to_vec()))
+                let text = String::from_utf8(data.to_vec()).unwrap_or_default();
+                Self::FrameReceived(ASGIReceiveEvent::new_websocket_receive(None, Some(text.into())))
             }
             OpCode::Binary => {
                 let asgi_event = ASGIReceiveEvent::new_websocket_receive(bytes, None);
@@ -359,15 +370,6 @@ impl From<Frame<'_>> for Event {
         }
     }
 }
-
-impl From<Result<String, FromUtf8Error>> for Event {
-    fn from(value: Result<String, FromUtf8Error>) -> Self {
-        match value {
-            Ok(text) => Self::FrameReceived(ASGIReceiveEvent::new_websocket_receive(None, Some(text.into()))),
-            Err(e) => Self::ErrorOccurred(e.into()),
-        }
-    }
-}   
 
 impl From<CommunicationResult<ASGISendEvent>> for Event {
     fn from(value: CommunicationResult<ASGISendEvent>) -> Self {

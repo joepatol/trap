@@ -46,7 +46,6 @@ def serve(
         request_ids: Whether to generate unique request IDs for each incoming request. ID is included in the response headers.
         auto_date_header: Whether to automatically add a Date header to responses.
         sensitive_headers: A list of header names to treat as sensitive. Will be redacted in logs.
-        reload: A ReloadConfig object to enable hot reload, or None to disable hot reload. Cannot be used with workers > 1.
     """
 
     config = ServerConfig(
@@ -72,7 +71,9 @@ def serve(
 
 
 def import_app(import_string: str) -> ASGIApplication:
-    sys.path.insert(0, os.getcwd())
+    cwd = os.getcwd()
+    if cwd not in sys.path:
+        sys.path.append(cwd)
     module_str, attr_str = import_string.split(":")
     module = importlib.import_module(module_str)
     return getattr(module, attr_str)
