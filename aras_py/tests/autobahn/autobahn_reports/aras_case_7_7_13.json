@@ -22,8 +22,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: bfX6uX1pxEcqe7zcQP7O3Q==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: nqZzjXhHzr38SQt/W0Sqqg+JQWI=\r\ndate: Tue, 05 May 2026 16:41:09 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: sOwnZSacCmLKJe1H3/Z9aw==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: 7n+ouUo1/j2MKfRjOIvJDOVg5/M=\r\ndate: Tue, 19 May 2026 13:56:09 GMT\r\n\r\n",
    "id": "7.7.13",
    "isServer": false,
    "localCloseCode": 4999,
@@ -39,10 +39,10 @@
       "8": 2
    },
    "rxOctetStats": {
-      "8": 1,
+      "4": 2,
       "166": 1
    },
-   "started": "2026-05-05T16:41:10.380Z",
+   "started": "2026-05-19T13:56:09.915Z",
    "trafficStats": null,
    "txFrameStats": {
       "8": 1
@@ -81,7 +81,7 @@
          8,
          true,
          0,
-         "c87846ba",
+         "aff4379a",
          null,
          null,
          false
@@ -90,7 +90,7 @@
          "TO",
          [
             8,
-            "8882c87846badbff"
+            "8882aff4379abc73"
          ],
          false
       ],
@@ -101,8 +101,8 @@
       [
          "RO",
          [
-            8,
-            "8802138788021387"
+            4,
+            "88021387"
          ]
       ],
       [
@@ -116,6 +116,13 @@
          0,
          false,
          null
+      ],
+      [
+         "RO",
+         [
+            4,
+            "88021387"
+         ]
       ],
       [
          "RF",

@@ -1,6 +1,7 @@
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,10 @@ from . import ws
 from .database import engine
 
 HERE = Path(os.path.dirname(os.path.abspath(__file__)))
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("aras")
+logger.addHandler(logging.StreamHandler())
 
 
 @asynccontextmanager

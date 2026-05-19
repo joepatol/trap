@@ -27,8 +27,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: sMBucGRAQVD2f57j5xUFBw==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: JOBcK0cQ2WdtA3ZbPcqmJY3+k5w=\r\ndate: Tue, 05 May 2026 16:41:01 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: /byYV9b0JytjpVJjpNb2fQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: Io0X7yVKuuGIOw6BnSOyQeRz2Gg=\r\ndate: Tue, 19 May 2026 13:56:00 GMT\r\n\r\n",
    "id": "1.1.2",
    "isServer": false,
    "localCloseCode": 1000,
@@ -51,11 +51,11 @@
       "8": 2
    },
    "rxOctetStats": {
-      "8": 1,
+      "4": 2,
       "127": 1,
       "166": 1
    },
-   "started": "2026-05-05T16:41:01.259Z",
+   "started": "2026-05-19T13:56:00.555Z",
    "trafficStats": null,
    "txFrameStats": {
       "1": 1,
@@ -96,7 +96,7 @@
          1,
          true,
          0,
-         "f96aa649",
+         "dde323ad",
          null,
          null,
          false
@@ -105,7 +105,7 @@
          "TO",
          [
             131,
-            "81fdf96aa649d3408c63d3408c63d3408c63d3408c63d3408c63d3408c63d3408c63d3408c63d3408c63d3408c63d3408c63d3408c63d3408c63d3408c63d340 ..."
+            "81fddde323adf7c90987f7c90987f7c90987f7c90987f7c90987f7c90987f7c90987f7c90987f7c90987f7c90987f7c90987f7c90987f7c90987f7c90987f7c9 ..."
          ],
          false
       ],
@@ -141,7 +141,7 @@
          8,
          true,
          0,
-         "22242d87",
+         "0fa8d5d8",
          null,
          null,
          false
@@ -150,15 +150,15 @@
          "TO",
          [
             8,
-            "888222242d8721cc"
+            "88820fa8d5d80c40"
          ],
          false
       ],
       [
          "RO",
          [
-            8,
-            "880203e8880203e8"
+            4,
+            "880203e8"
          ]
       ],
       [
@@ -172,6 +172,13 @@
          0,
          false,
          null
+      ],
+      [
+         "RO",
+         [
+            4,
+            "880203e8"
+         ]
       ],
       [
          "RF",

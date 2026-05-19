@@ -8,7 +8,7 @@
    "createWirelog": true,
    "description": "Send binary message message with payload of length 64 * 2**10 (64k).",
    "droppedByMe": false,
-   "duration": 1,
+   "duration": 4,
    "expectation": "Receive echo'ed binary message (with payload as sent).",
    "expected": {},
    "expectedClose": {
@@ -19,8 +19,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: 6vwfZwcykxBt+rr4JBAQTQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: 1eupRmQ2O2XWVUlOQRlXrg3xxqY=\r\ndate: Tue, 05 May 2026 16:41:10 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: 2Xand4HemQf3mZUS2Dde1g==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: iPpZxs1c+U4a5Sra6Q+l8CrEHNw=\r\ndate: Tue, 19 May 2026 13:56:10 GMT\r\n\r\n",
    "id": "9.2.1",
    "isServer": false,
    "localCloseCode": 1000,
@@ -37,12 +37,12 @@
       "8": 2
    },
    "rxOctetStats": {
-      "8": 1,
-      "10": 1,
+      "4": 2,
       "166": 1,
-      "65536": 1
+      "32768": 1,
+      "32778": 1
    },
-   "started": "2026-05-05T16:41:10.809Z",
+   "started": "2026-05-19T13:56:10.308Z",
    "trafficStats": null,
    "txFrameStats": {
       "2": 1,
@@ -87,7 +87,7 @@
          8,
          true,
          0,
-         "6d5e7a81",
+         "b5ee69ed",
          null,
          null,
          false
@@ -96,15 +96,15 @@
          "TO",
          [
             8,
-            "88826d5e7a816eb6"
+            "8882b5ee69edb606"
          ],
          false
       ],
       [
          "RO",
          [
-            8,
-            "880203e8880203e8"
+            4,
+            "880203e8"
          ]
       ],
       [
@@ -118,6 +118,13 @@
          0,
          false,
          null
+      ],
+      [
+         "RO",
+         [
+            4,
+            "880203e8"
+         ]
       ],
       [
          "RF",

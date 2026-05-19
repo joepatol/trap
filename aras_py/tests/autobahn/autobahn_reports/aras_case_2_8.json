@@ -8,7 +8,7 @@
    "createWirelog": true,
    "description": "Send unsolicited pong with payload. Verify nothing is received. Clean close with normal code.",
    "droppedByMe": false,
-   "duration": 0,
+   "duration": 1,
    "expectation": "Nothing.",
    "expected": {
       "OK": []
@@ -21,8 +21,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: T4q4JdBW6ECnM8Zd224j+g==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: JtyRNqQekTDSBY4lnpf/Zo1I0Kw=\r\ndate: Tue, 05 May 2026 16:41:01 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: j4FJXm/A6UvYgJXAsbnLsg==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: 95/626RgSepA6ybVXEIv6MH7Yag=\r\ndate: Tue, 19 May 2026 13:56:00 GMT\r\n\r\n",
    "id": "2.8",
    "isServer": false,
    "localCloseCode": 1000,
@@ -41,7 +41,7 @@
       "25": 1,
       "166": 1
    },
-   "started": "2026-05-05T16:41:01.388Z",
+   "started": "2026-05-19T13:56:00.716Z",
    "trafficStats": null,
    "txFrameStats": {
       "8": 1,
@@ -82,7 +82,7 @@
          10,
          true,
          0,
-         "5f97731d",
+         "9a8a628f",
          null,
          null,
          false
@@ -91,7 +91,7 @@
          "TO",
          [
             30,
-            "8a985f97731d2af9007233fe10742bf2173d2ff81d7a7fe7126433f81279"
+            "8a989a8a628fefe411e0f6e301e6eeef06afeae50ce8bafa03f6f6e503eb"
          ],
          false
       ],
@@ -104,7 +104,7 @@
          8,
          true,
          0,
-         "0ae491da",
+         "e5a83327",
          null,
          null,
          false
@@ -113,7 +113,7 @@
          "TO",
          [
             8,
-            "88820ae491da090c"
+            "8882e5a83327e640"
          ],
          false
       ],

@@ -1,7 +1,7 @@
 {
    "agent": "aras",
    "behavior": "OK",
-   "behaviorClose": "WRONG CODE",
+   "behaviorClose": "OK",
    "case": 114,
    "closedByMe": false,
    "createStats": true,
@@ -22,27 +22,27 @@
       "requireClean": false
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: 3CptQN101r8B2zy9fszZUQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: /pYMFyYhqv2s2vPR8qwyHiSed58=\r\ndate: Tue, 05 May 2026 16:41:09 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: lFmki8A08qP7wZxOLfl0nQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: BTZK4EJrtiL0pbQ04kAxuJYPXLg=\r\ndate: Tue, 19 May 2026 13:56:09 GMT\r\n\r\n",
    "id": "6.12.3",
    "isServer": false,
    "localCloseCode": 1000,
    "localCloseReason": null,
    "received": [],
-   "remoteCloseCode": 1011,
-   "remoteCloseReason": "Internal server error",
+   "remoteCloseCode": 1007,
+   "remoteCloseReason": "Invalid UTF-8 data received",
    "reportCompressionRatio": false,
    "reportTime": false,
    "result": "Actual events match at least one expected.",
-   "resultClose": "The close code should have been 1007 or empty",
+   "resultClose": "Connection was properly closed",
    "rxFrameStats": {
       "8": 1
    },
    "rxOctetStats": {
-      "25": 1,
+      "31": 1,
       "166": 1
    },
-   "started": "2026-05-05T16:41:09.963Z",
+   "started": "2026-05-19T13:56:09.363Z",
    "trafficStats": null,
    "txFrameStats": {
       "1": 1,
@@ -82,7 +82,7 @@
          1,
          true,
          0,
-         "5ea01242",
+         "0bc5ec63",
          null,
          null,
          false
@@ -91,7 +91,7 @@
          "TO",
          [
             8,
-            "81825ea01242de1f"
+            "81820bc5ec638b7a"
          ],
          false
       ],
@@ -102,15 +102,15 @@
       [
          "RO",
          [
-            25,
-            "881703f3496e7465726e616c20736572766572206572726f72"
+            31,
+            "881d03ef496e76616c6964205554462d382064617461207265636569766564"
          ]
       ],
       [
          "RF",
          [
-            23,
-            "0x03f3496e7465726e616c20736572766572206572726f72"
+            29,
+            "0x03ef496e76616c6964205554462d382064617461207265636569766564"
          ],
          8,
          true,
@@ -127,7 +127,7 @@
          8,
          true,
          0,
-         "3c1aa440",
+         "ce4b3b41",
          null,
          null,
          false
@@ -136,7 +136,7 @@
          "TO",
          [
             8,
-            "88823c1aa4403ff2"
+            "8882ce4b3b41cda3"
          ],
          false
       ]

@@ -19,8 +19,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: 1hy68eMrGhK4LAdBn/ILgw==\r\nSec-WebSocket-Extensions: permessage-deflate; client_no_context_takeover; client_max_window_bits\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: wm+jWGocnL2SEvWb+vaMFOYvXQE=\r\ndate: Tue, 05 May 2026 16:41:15 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: dP6rqGvDyFXYgEAcLr2tdA==\r\nSec-WebSocket-Extensions: permessage-deflate; client_no_context_takeover; client_max_window_bits\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: Poa6COE65P5VK4uJT7uZe8yy1Zw=\r\ndate: Tue, 19 May 2026 13:56:14 GMT\r\n\r\n",
    "id": "12.2.1",
    "isServer": false,
    "localCloseCode": 1000,
@@ -36,10 +36,10 @@
       "8": 2
    },
    "rxOctetStats": {
-      "8": 1,
+      "4": 2,
       "166": 1
    },
-   "started": "2026-05-05T16:41:15.759Z",
+   "started": "2026-05-19T13:56:14.813Z",
    "trafficStats": null,
    "txFrameStats": {
       "8": 1

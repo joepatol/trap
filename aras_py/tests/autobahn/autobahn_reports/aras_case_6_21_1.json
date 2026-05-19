@@ -1,14 +1,14 @@
 {
    "agent": "aras",
    "behavior": "OK",
-   "behaviorClose": "WRONG CODE",
+   "behaviorClose": "OK",
    "case": 161,
    "closedByMe": false,
    "createStats": true,
    "createWirelog": true,
    "description": "Send a text message with payload which is not valid UTF-8 in one fragment.<br><br>Payload: 0xeda080edb080",
    "droppedByMe": false,
-   "duration": 0,
+   "duration": 1,
    "expectation": "The connection is failed immediately, since the payload is not valid UTF-8.",
    "expected": {
       "OK": []
@@ -22,27 +22,27 @@
       "requireClean": false
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: 5mUYBRZtMel/pONQ7VXbzw==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: iykUlMpUzCa1TnnjCy+n/9ctRd0=\r\ndate: Tue, 05 May 2026 16:41:09 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: 9/LdaLmNzOe+4WnBwxlrGA==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: 2QuOFtq6WOA9TRGz/kkJMWe3qIs=\r\ndate: Tue, 19 May 2026 13:56:09 GMT\r\n\r\n",
    "id": "6.21.1",
    "isServer": false,
    "localCloseCode": 1000,
    "localCloseReason": null,
    "received": [],
-   "remoteCloseCode": 1011,
-   "remoteCloseReason": "Internal server error",
+   "remoteCloseCode": 1007,
+   "remoteCloseReason": "Invalid UTF-8 data received",
    "reportCompressionRatio": false,
    "reportTime": false,
    "result": "Actual events match at least one expected.",
-   "resultClose": "The close code should have been 1007 or empty",
+   "resultClose": "Connection was properly closed",
    "rxFrameStats": {
       "8": 1
    },
    "rxOctetStats": {
-      "25": 1,
+      "31": 1,
       "166": 1
    },
-   "started": "2026-05-05T16:41:10.099Z",
+   "started": "2026-05-19T13:56:09.581Z",
    "trafficStats": null,
    "txFrameStats": {
       "1": 1,
@@ -83,7 +83,7 @@
          1,
          true,
          0,
-         "1ccd0945",
+         "73b4c814",
          null,
          null,
          false
@@ -92,7 +92,7 @@
          "TO",
          [
             12,
-            "81861ccd0945f16d89a8ac4d"
+            "818673b4c8149e1448f9c334"
          ],
          false
       ],
@@ -103,15 +103,15 @@
       [
          "RO",
          [
-            25,
-            "881703f3496e7465726e616c20736572766572206572726f72"
+            31,
+            "881d03ef496e76616c6964205554462d382064617461207265636569766564"
          ]
       ],
       [
          "RF",
          [
-            23,
-            "0x03f3496e7465726e616c20736572766572206572726f72"
+            29,
+            "0x03ef496e76616c6964205554462d382064617461207265636569766564"
          ],
          8,
          true,
@@ -128,7 +128,7 @@
          8,
          true,
          0,
-         "86d3ef5e",
+         "d8905f83",
          null,
          null,
          false
@@ -137,7 +137,7 @@
          "TO",
          [
             8,
-            "888286d3ef5e853b"
+            "8882d8905f83db78"
          ],
          false
       ]

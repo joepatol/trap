@@ -1,7 +1,7 @@
 {
    "agent": "aras",
-   "behavior": "FAILED",
-   "behaviorClose": "WRONG CODE",
+   "behavior": "OK",
+   "behaviorClose": "OK",
    "case": 243,
    "closedByMe": true,
    "createStats": true,
@@ -21,27 +21,27 @@
       "requireClean": false
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: 1JePkVf1gTNpw8UjSfSVbw==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: /dCFvbvjkbfSrfNR6JC7aMRtAKA=\r\ndate: Tue, 05 May 2026 16:41:09 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: vhdFQOi5jHZ/RYHf7OjJjA==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: vnlSUtmFgOn7z/U1OGnkvqP1Mio=\r\ndate: Tue, 19 May 2026 13:56:09 GMT\r\n\r\n",
    "id": "7.9.8",
    "isServer": false,
    "localCloseCode": 2000,
    "localCloseReason": null,
    "received": [],
-   "remoteCloseCode": 1011,
-   "remoteCloseReason": "Internal server error",
+   "remoteCloseCode": 1002,
+   "remoteCloseReason": "Protocol error",
    "reportCompressionRatio": false,
    "reportTime": false,
-   "result": "The close code should have been 1002 or empty",
-   "resultClose": "The close code should have been 1002 or empty",
+   "result": "Actual events match at least one expected.",
+   "resultClose": "Connection was properly closed",
    "rxFrameStats": {
       "8": 2
    },
    "rxOctetStats": {
-      "29": 1,
+      "22": 1,
       "166": 1
    },
-   "started": "2026-05-05T16:41:10.406Z",
+   "started": "2026-05-19T13:56:09.946Z",
    "trafficStats": null,
    "txFrameStats": {
       "8": 1
@@ -80,7 +80,7 @@
          8,
          true,
          0,
-         "c8786518",
+         "2b10d943",
          null,
          null,
          false
@@ -89,7 +89,7 @@
          "TO",
          [
             8,
-            "8882c8786518cfa8"
+            "88822b10d9432cc0"
          ],
          false
       ],
@@ -100,8 +100,8 @@
       [
          "RO",
          [
-            29,
-            "880203ea881703f3496e7465726e616c20736572766572206572726f72"
+            22,
+            "880203ea881003ea50726f746f636f6c206572726f72"
          ]
       ],
       [
@@ -119,8 +119,8 @@
       [
          "RF",
          [
-            23,
-            "0x03f3496e7465726e616c20736572766572206572726f72"
+            16,
+            "0x03ea50726f746f636f6c206572726f72"
          ],
          8,
          true,

@@ -21,8 +21,8 @@
       "requireClean": false
    },
    "failedByMe": true,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: D6jRUhnjCSk8pCo1muRssg==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: QqEQiWwYHsMZCHea2H3r8Wxe0QY=\r\ndate: Tue, 05 May 2026 16:41:09 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: 3vM0QZ3CHDr2lBv2BKLJUQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: ZmfvS7wMp1ocnErAnYOyM9W7P8s=\r\ndate: Tue, 19 May 2026 13:56:09 GMT\r\n\r\n",
    "id": "7.3.6",
    "isServer": false,
    "localCloseCode": 1000,
@@ -36,10 +36,10 @@
    "resultClose": "It is preferred that the server close the TCP connection",
    "rxFrameStats": {},
    "rxOctetStats": {
-      "166": 1,
-      "260": 1
+      "130": 1,
+      "166": 1
    },
-   "started": "2026-05-05T16:41:10.335Z",
+   "started": "2026-05-19T13:56:09.862Z",
    "trafficStats": null,
    "txFrameStats": {
       "8": 1
@@ -78,7 +78,7 @@
          8,
          true,
          0,
-         "deceef8c",
+         "49070e7b",
          null,
          null,
          false
@@ -87,7 +87,7 @@
          "TO",
          [
             134,
-            "88fe007edeceef8cdd26c5a6f4e4c5a6f4e4c5a6f4e4c5a6f4e4c5a6f4e4c5a6f4e4c5a6f4e4c5a6f4e4c5a6f4e4c5a6f4e4c5a6f4e4c5a6f4e4c5a6f4e4c5a6 ..."
+            "88fe007e49070e7b4aef2451632d2451632d2451632d2451632d2451632d2451632d2451632d2451632d2451632d2451632d2451632d2451632d2451632d2451 ..."
          ],
          false
       ],
@@ -98,7 +98,7 @@
       [
          "RO",
          [
-            260,
+            130,
             "887e007e03e82a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a ..."
          ]
       ]

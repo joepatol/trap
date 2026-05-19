@@ -8,7 +8,7 @@
    "createWirelog": true,
    "description": "Send binary message message with payload of length 125.",
    "droppedByMe": false,
-   "duration": 1,
+   "duration": 2,
    "expectation": "Receive echo'ed binary message (with payload as sent). Clean close with normal code.",
    "expected": {
       "OK": [
@@ -27,8 +27,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: N01r7JGPsY0dzdn9diJdtw==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: mGh4zCq8PcQzIihW7qCnWTObLlo=\r\ndate: Tue, 05 May 2026 16:41:01 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: phQIFcSPWc6QnB4lH880TQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: UvoZMqkzfQdT9PaECON47LTLl5g=\r\ndate: Tue, 19 May 2026 13:56:00 GMT\r\n\r\n",
    "id": "1.2.2",
    "isServer": false,
    "localCloseCode": 1000,
@@ -51,11 +51,11 @@
       "8": 2
    },
    "rxOctetStats": {
-      "8": 1,
+      "4": 2,
       "127": 1,
       "166": 1
    },
-   "started": "2026-05-05T16:41:01.310Z",
+   "started": "2026-05-19T13:56:00.604Z",
    "trafficStats": null,
    "txFrameStats": {
       "2": 1,
@@ -96,7 +96,7 @@
          2,
          true,
          0,
-         "c6666846",
+         "a9c0f13a",
          null,
          null,
          false
@@ -105,7 +105,7 @@
          "TO",
          [
             131,
-            "82fdc6666846389896b8389896b8389896b8389896b8389896b8389896b8389896b8389896b8389896b8389896b8389896b8389896b8389896b8389896b83898 ..."
+            "82fda9c0f13a573e0fc4573e0fc4573e0fc4573e0fc4573e0fc4573e0fc4573e0fc4573e0fc4573e0fc4573e0fc4573e0fc4573e0fc4573e0fc4573e0fc4573e ..."
          ],
          false
       ],
@@ -141,7 +141,7 @@
          8,
          true,
          0,
-         "eb60a896",
+         "8e5872f4",
          null,
          null,
          false
@@ -150,15 +150,15 @@
          "TO",
          [
             8,
-            "8882eb60a896e888"
+            "88828e5872f48db0"
          ],
          false
       ],
       [
          "RO",
          [
-            8,
-            "880203e8880203e8"
+            4,
+            "880203e8"
          ]
       ],
       [
@@ -172,6 +172,13 @@
          0,
          false,
          null
+      ],
+      [
+         "RO",
+         [
+            4,
+            "880203e8"
+         ]
       ],
       [
          "RF",

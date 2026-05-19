@@ -8,7 +8,7 @@
    "createWirelog": true,
    "description": "Send ping with binary payload of 125 octets.",
    "droppedByMe": false,
-   "duration": 1,
+   "duration": 2,
    "expectation": "Pong with payload echo'ed is sent in reply to Ping. Clean close with normal code.",
    "expected": {
       "OK": [
@@ -26,8 +26,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: aV9LPujwBCDfk31K98lP8w==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: KK74XxAPLN7P6HJvbub0X9m4n+w=\r\ndate: Tue, 05 May 2026 16:41:01 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: D7wcFw/owRuVX5Wrli/Sfw==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: p9gKOhTHQsRN9KKfCyCcTXVS6IA=\r\ndate: Tue, 19 May 2026 13:56:00 GMT\r\n\r\n",
    "id": "2.4",
    "isServer": false,
    "localCloseCode": 1000,
@@ -49,11 +49,11 @@
       "10": 1
    },
    "rxOctetStats": {
-      "8": 1,
+      "4": 2,
       "127": 1,
       "166": 1
    },
-   "started": "2026-05-05T16:41:01.363Z",
+   "started": "2026-05-19T13:56:00.686Z",
    "trafficStats": null,
    "txFrameStats": {
       "8": 1,
@@ -94,7 +94,7 @@
          9,
          true,
          0,
-         "85d8362f",
+         "4e804a1b",
          null,
          null,
          false
@@ -103,7 +103,7 @@
          "TO",
          [
             131,
-            "89fd85d8362f7b26c8d17b26c8d17b26c8d17b26c8d17b26c8d17b26c8d17b26c8d17b26c8d17b26c8d17b26c8d17b26c8d17b26c8d17b26c8d17b26c8d17b26 ..."
+            "89fd4e804a1bb07eb4e5b07eb4e5b07eb4e5b07eb4e5b07eb4e5b07eb4e5b07eb4e5b07eb4e5b07eb4e5b07eb4e5b07eb4e5b07eb4e5b07eb4e5b07eb4e5b07e ..."
          ],
          false
       ],
@@ -139,7 +139,7 @@
          8,
          true,
          0,
-         "cb070b1c",
+         "5f40d38b",
          null,
          null,
          false
@@ -148,15 +148,15 @@
          "TO",
          [
             8,
-            "8882cb070b1cc8ef"
+            "88825f40d38b5ca8"
          ],
          false
       ],
       [
          "RO",
          [
-            8,
-            "880203e8880203e8"
+            4,
+            "880203e8"
          ]
       ],
       [
@@ -170,6 +170,13 @@
          0,
          false,
          null
+      ],
+      [
+         "RO",
+         [
+            4,
+            "880203e8"
+         ]
       ],
       [
          "RF",

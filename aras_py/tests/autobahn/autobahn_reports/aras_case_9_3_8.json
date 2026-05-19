@@ -8,7 +8,7 @@
    "createWirelog": true,
    "description": "Send fragmented text message message with message payload of length 4 * 2**20 (4M). Sent out in fragments of 1M.",
    "droppedByMe": false,
-   "duration": 20,
+   "duration": 21,
    "expectation": "Receive echo'ed text message (with payload as sent).",
    "expected": {},
    "expectedClose": {
@@ -19,8 +19,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: uAFTEcoQHOLPL7jy1HF25Q==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: qDLZ+67M9j+2ZcrfXil9GBfaMxE=\r\ndate: Tue, 05 May 2026 16:41:10 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: gdlO/qqTXXKfPwk91y7BUA==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: W6dKkuJvaazJLM03yNGOy2jFUI0=\r\ndate: Tue, 19 May 2026 13:56:10 GMT\r\n\r\n",
    "id": "9.3.8",
    "isServer": false,
    "localCloseCode": 1000,
@@ -38,13 +38,13 @@
       "8": 2
    },
    "rxOctetStats": {
-      "8": 1,
+      "4": 2,
       "166": 1,
       "9300": 1,
       "56876": 1,
       "65536": 63
    },
-   "started": "2026-05-05T16:41:11.487Z",
+   "started": "2026-05-19T13:56:10.874Z",
    "trafficStats": null,
    "txFrameStats": {
       "0": 4,
@@ -91,7 +91,7 @@
          8,
          true,
          0,
-         "3c77d933",
+         "21757c70",
          null,
          null,
          false
@@ -100,15 +100,15 @@
          "TO",
          [
             8,
-            "88823c77d9333f9f"
+            "888221757c70229d"
          ],
          false
       ],
       [
          "RO",
          [
-            8,
-            "880203e8880203e8"
+            4,
+            "880203e8"
          ]
       ],
       [
@@ -122,6 +122,13 @@
          0,
          false,
          null
+      ],
+      [
+         "RO",
+         [
+            4,
+            "880203e8"
+         ]
       ],
       [
          "RF",

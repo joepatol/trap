@@ -8,7 +8,7 @@
    "createWirelog": true,
    "description": "Send a text message with payload which is valid UTF-8 in one fragment.<br><br>Payload: 0xceba",
    "droppedByMe": false,
-   "duration": 4,
+   "duration": 3,
    "expectation": "The message is echo'ed back to us.",
    "expected": {
       "OK": [
@@ -27,8 +27,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: dEwAI+ZNgj6X5HsM6lw5Tg==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: vNnxtceYRajuZXq/K2bbdwfQWUk=\r\ndate: Tue, 05 May 2026 16:41:09 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: Irwg1i6FVcRytpZvRxP35w==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: xq2Uti9anQZ6moqkgkx7K1df4II=\r\ndate: Tue, 19 May 2026 13:56:09 GMT\r\n\r\n",
    "id": "6.6.2",
    "isServer": false,
    "localCloseCode": 1000,
@@ -55,7 +55,7 @@
       "8": 1,
       "166": 1
    },
-   "started": "2026-05-05T16:41:09.806Z",
+   "started": "2026-05-19T13:56:09.163Z",
    "trafficStats": null,
    "txFrameStats": {
       "1": 1,
@@ -95,7 +95,7 @@
          1,
          true,
          0,
-         "f584e8ba",
+         "f6352f22",
          null,
          null,
          false
@@ -104,7 +104,7 @@
          "TO",
          [
             8,
-            "8182f584e8ba3b3e"
+            "8182f6352f22388f"
          ],
          false
       ],
@@ -140,7 +140,7 @@
          8,
          true,
          0,
-         "60b22e81",
+         "3b8d03a9",
          null,
          null,
          false
@@ -149,7 +149,7 @@
          "TO",
          [
             8,
-            "888260b22e81635a"
+            "88823b8d03a93865"
          ],
          false
       ],

@@ -21,8 +21,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: nIwyLoHteWhO8amhMuYxkA==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: rqweBqM/c2ke/BETrOK9l1hHbr8=\r\ndate: Tue, 05 May 2026 16:41:09 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: XvLfXGcgigpLFPt5SwoyJA==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: 7n9dR9TGjttiYRrRxdG+M9WMq9Q=\r\ndate: Tue, 19 May 2026 13:56:09 GMT\r\n\r\n",
    "id": "7.1.5",
    "isServer": false,
    "localCloseCode": 1000,
@@ -38,10 +38,10 @@
       "8": 2
    },
    "rxOctetStats": {
-      "8": 1,
+      "4": 2,
       "166": 1
    },
-   "started": "2026-05-05T16:41:10.311Z",
+   "started": "2026-05-19T13:56:09.821Z",
    "trafficStats": null,
    "txFrameStats": {
       "0": 1,
@@ -83,7 +83,7 @@
          1,
          false,
          0,
-         "19c1c164",
+         "96246120",
          null,
          null,
          false
@@ -92,7 +92,7 @@
          "TO",
          [
             15,
-            "018919c1c1647fb3a00374a4af1028"
+            "018996246120f0560047fb410f54a7"
          ],
          false
       ],
@@ -105,7 +105,7 @@
          8,
          true,
          0,
-         "84b9dc31",
+         "777b2c0b",
          null,
          null,
          false
@@ -114,7 +114,7 @@
          "TO",
          [
             8,
-            "888284b9dc318751"
+            "8882777b2c0b7493"
          ],
          false
       ],
@@ -127,7 +127,7 @@
          0,
          true,
          0,
-         "b28c459c",
+         "045c1575",
          null,
          null,
          false
@@ -136,7 +136,7 @@
          "TO",
          [
             15,
-            "8089b28c459cd4fe24fbdfe92be880"
+            "8089045c1575622e741269397b0136"
          ],
          false
       ],
@@ -147,8 +147,8 @@
       [
          "RO",
          [
-            8,
-            "880203e8880203e8"
+            4,
+            "880203e8"
          ]
       ],
       [
@@ -162,6 +162,13 @@
          0,
          false,
          null
+      ],
+      [
+         "RO",
+         [
+            4,
+            "880203e8"
+         ]
       ],
       [
          "RF",

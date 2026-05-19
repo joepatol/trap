@@ -8,7 +8,7 @@
    "createWirelog": false,
    "description": "Send 1000 compressed messages each of payload size 8192, auto-fragment to 256 octets. Use permessage-deflate client offers (requestNoContextTakeover, requestMaxWindowBits): [(True, 9), (True, 0), (False, 0)]",
    "droppedByMe": false,
-   "duration": 1,
+   "duration": 5,
    "expectation": "Receive echo'ed messages (with payload as sent). Timeout case after 480 secs.",
    "expected": {},
    "expectedClose": {
@@ -19,8 +19,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: EyAo3V6inGNa5XiRwwOj2A==\r\nSec-WebSocket-Extensions: permessage-deflate; client_no_context_takeover; client_max_window_bits; server_no_context_takeover; server_max_window_bits=9, permessage-deflate; client_no_context_takeover; client_max_window_bits; server_no_context_takeover, permessage-deflate; client_no_context_takeover; client_max_window_bits\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: HwcmgI07bvUbM78U8LGQ669C2ss=\r\ndate: Tue, 05 May 2026 16:41:16 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: EuyWR5lNSy32mLCkqdxyMg==\r\nSec-WebSocket-Extensions: permessage-deflate; client_no_context_takeover; client_max_window_bits; server_no_context_takeover; server_max_window_bits=9, permessage-deflate; client_no_context_takeover; client_max_window_bits; server_no_context_takeover, permessage-deflate; client_no_context_takeover; client_max_window_bits\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: X3sLdMPKN2OVHUfaeEZgdiNKr6g=\r\ndate: Tue, 19 May 2026 13:56:14 GMT\r\n\r\n",
    "id": "13.7.11",
    "isServer": false,
    "localCloseCode": 1000,
@@ -36,10 +36,10 @@
       "8": 2
    },
    "rxOctetStats": {
-      "8": 1,
+      "4": 2,
       "166": 1
    },
-   "started": "2026-05-05T16:41:16.487Z",
+   "started": "2026-05-19T13:56:15.636Z",
    "trafficStats": null,
    "txFrameStats": {
       "8": 1

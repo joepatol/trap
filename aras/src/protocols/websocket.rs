@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 use std::fmt::Display;
 use std::result::Result as StdResult;
-use std::string::FromUtf8Error;
 use std::time::Duration;
 
 use asgispec::events::{WebsocketAcceptEvent, WebsocketCloseEvent, WebsocketSendEvent};
@@ -264,18 +263,22 @@ impl State {
         W: Websocket,
         S: SendToASGIApp,
     {
-        if let ArasError::WsUtf8Error(e) = &error {
-            error!("Websocket received invalid UTF-8 data: {}", e);
-            return self
-                .close(CloseCode::Invalid.into(), "Invalid UTF-8 data received".into(), ctx)
-                .await;
-        }
-
-        if let ArasError::WsInvalidCloseCode(code) = &error {
-            error!("Websocket received invalid close code: {}", code);
-            return self
-                .close(CloseCode::Protocol.into(), "Invalid close code".into(), ctx)
-                .await;
+        if let ArasError::WebsocketError(e) = &error {
+            match e.as_ref() {
+                WebSocketError::InvalidCloseCode | WebSocketError::InvalidCloseFrame => {
+                    error!("Websocket received invalid close frame: {}", e);
+                    return self
+                        .close(CloseCode::Protocol.into(), "Protocol error".into(), ctx)
+                        .await;
+                }
+                WebSocketError::InvalidUTF8 => {
+                    error!("Websocket received invalid UTF-8 in close frame: {}", e);
+                    return self
+                        .close(CloseCode::Invalid.into(), "Invalid UTF-8 data received".into(), ctx)
+                        .await;
+                }
+                _ => {}
+            }
         }
 
         error!("Error during websocket connection: {}", error);
@@ -339,15 +342,11 @@ impl From<Frame<'_>> for Event {
             Payload::BorrowedMut(b) => Some(Bytes::copy_from_slice(b)),
         };
 
-        // RFC 6455 §7.4.2: valid codes are 1000-1003, 1007-1011, 3000-4999
-        fn is_valid_close_code(code: u16) -> bool {
-            matches!(code, 1000..=1003 | 1007..=1011 | 3000..=4999)
-        }
-
         match value.opcode {
             OpCode::Text => {
                 let data = bytes.unwrap_or(Bytes::new());
-                Self::from(String::from_utf8(data.to_vec()))
+                let text = String::from_utf8(data.to_vec()).unwrap_or_default();
+                Self::FrameReceived(ASGIReceiveEvent::new_websocket_receive(None, Some(text.into())))
             }
             OpCode::Binary => {
                 let asgi_event = ASGIReceiveEvent::new_websocket_receive(bytes, None);
@@ -362,9 +361,6 @@ impl From<Frame<'_>> for Event {
                 } else {
                     (CloseCode::Normal.into(), String::new())
                 };
-                if !is_valid_close_code(code) {
-                    return Self::ErrorOccurred(ArasError::WsInvalidCloseCode(code));
-                }
                 let asgi_event = ASGIReceiveEvent::new_websocket_disconnect(code, reason);
                 Self::FrameReceived(asgi_event)
             }
@@ -374,15 +370,6 @@ impl From<Frame<'_>> for Event {
         }
     }
 }
-
-impl From<Result<String, FromUtf8Error>> for Event {
-    fn from(value: Result<String, FromUtf8Error>) -> Self {
-        match value {
-            Ok(text) => Self::FrameReceived(ASGIReceiveEvent::new_websocket_receive(None, Some(text.into()))),
-            Err(e) => Self::ErrorOccurred(e.into()),
-        }
-    }
-}   
 
 impl From<CommunicationResult<ASGISendEvent>> for Event {
     fn from(value: CommunicationResult<ASGISendEvent>) -> Self {

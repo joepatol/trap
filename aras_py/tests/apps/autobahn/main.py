@@ -6,6 +6,7 @@ from fastapi import FastAPI, WebSocket
 app = FastAPI(debug=True)
 server_logger = logging.getLogger("aras")
 server_logger.setLevel(logging.INFO)
+server_logger.addHandler(logging.StreamHandler())
 
 
 @app.websocket("/ws")

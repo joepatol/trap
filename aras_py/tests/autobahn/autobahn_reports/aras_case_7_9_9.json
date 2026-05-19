@@ -1,14 +1,14 @@
 {
    "agent": "aras",
-   "behavior": "FAILED",
-   "behaviorClose": "WRONG CODE",
+   "behavior": "OK",
+   "behaviorClose": "OK",
    "case": 244,
    "closedByMe": true,
    "createStats": true,
    "createWirelog": true,
    "description": "Send close with invalid close code 2999",
    "droppedByMe": false,
-   "duration": 0,
+   "duration": 1,
    "expectation": "Clean close with protocol error code or drop TCP",
    "expected": {
       "OK": []
@@ -21,27 +21,28 @@
       "requireClean": false
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: tuTsWFZeZSycUHsSq4+PHw==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: MuIkhHrTheg9H+jcdm+8Vj8vwog=\r\ndate: Tue, 05 May 2026 16:41:09 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: zGNSqRwJiPaY1aMvu0FxqQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: Tt+icRVoF3IHrU3XXZx3E8kSGCE=\r\ndate: Tue, 19 May 2026 13:56:09 GMT\r\n\r\n",
    "id": "7.9.9",
    "isServer": false,
    "localCloseCode": 2999,
    "localCloseReason": null,
    "received": [],
-   "remoteCloseCode": 1011,
-   "remoteCloseReason": "Internal server error",
+   "remoteCloseCode": 1002,
+   "remoteCloseReason": "Protocol error",
    "reportCompressionRatio": false,
    "reportTime": false,
-   "result": "The close code should have been 1002 or empty",
-   "resultClose": "The close code should have been 1002 or empty",
+   "result": "Actual events match at least one expected.",
+   "resultClose": "Connection was properly closed",
    "rxFrameStats": {
       "8": 2
    },
    "rxOctetStats": {
-      "29": 1,
+      "4": 1,
+      "18": 1,
       "166": 1
    },
-   "started": "2026-05-05T16:41:10.409Z",
+   "started": "2026-05-19T13:56:09.950Z",
    "trafficStats": null,
    "txFrameStats": {
       "8": 1
@@ -80,7 +81,7 @@
          8,
          true,
          0,
-         "17329391",
+         "78335925",
          null,
          null,
          false
@@ -89,7 +90,7 @@
          "TO",
          [
             8,
-            "8882173293911c85"
+            "8882783359257384"
          ],
          false
       ],
@@ -100,8 +101,8 @@
       [
          "RO",
          [
-            29,
-            "880203ea881703f3496e7465726e616c20736572766572206572726f72"
+            4,
+            "880203ea"
          ]
       ],
       [
@@ -117,10 +118,17 @@
          null
       ],
       [
+         "RO",
+         [
+            18,
+            "881003ea50726f746f636f6c206572726f72"
+         ]
+      ],
+      [
          "RF",
          [
-            23,
-            "0x03f3496e7465726e616c20736572766572206572726f72"
+            16,
+            "0x03ea50726f746f636f6c206572726f72"
          ],
          8,
          true,

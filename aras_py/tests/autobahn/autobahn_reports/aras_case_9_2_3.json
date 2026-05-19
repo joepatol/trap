@@ -8,7 +8,7 @@
    "createWirelog": true,
    "description": "Send binary message message with payload of length 1 * 2**20 (1M).",
    "droppedByMe": false,
-   "duration": 8,
+   "duration": 13,
    "expectation": "Receive echo'ed binary message (with payload as sent).",
    "expected": {},
    "expectedClose": {
@@ -19,8 +19,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: YkM8lfSoP2Z2Z3BXJZscDQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: VxiIgu0NFnQXCmr/mzqbIA7WzZ4=\r\ndate: Tue, 05 May 2026 16:41:10 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: me7kB5BTNcEeGLvTqLwnkA==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: ir4yxq/XYMu+YPEsLqfR9q/si8o=\r\ndate: Tue, 19 May 2026 13:56:10 GMT\r\n\r\n",
    "id": "9.2.3",
    "isServer": false,
    "localCloseCode": 1000,
@@ -40,11 +40,11 @@
    "rxOctetStats": {
       "4": 2,
       "166": 1,
-      "9028": 1,
-      "56668": 1,
+      "8924": 1,
+      "56772": 1,
       "65536": 15
    },
-   "started": "2026-05-05T16:41:10.818Z",
+   "started": "2026-05-19T13:56:10.321Z",
    "trafficStats": null,
    "txFrameStats": {
       "2": 1,
@@ -89,7 +89,7 @@
          8,
          true,
          0,
-         "796bcbff",
+         "5d4a8338",
          null,
          null,
          false
@@ -98,7 +98,7 @@
          "TO",
          [
             8,
-            "8882796bcbff7a83"
+            "88825d4a83385ea2"
          ],
          false
       ],

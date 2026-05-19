@@ -21,8 +21,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: fN7csh4TTI2Czj3AdgEyDg==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: T8ikMlZglUKn2BKUQ5cTD2sd+c0=\r\ndate: Tue, 05 May 2026 16:41:09 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: OMqLi0UJIvmthtGn+VR/qw==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: Jez5pl60G8naU9craECN+eE2LLs=\r\ndate: Tue, 19 May 2026 13:56:09 GMT\r\n\r\n",
    "id": "7.3.4",
    "isServer": false,
    "localCloseCode": 1000,
@@ -38,10 +38,10 @@
       "8": 2
    },
    "rxOctetStats": {
-      "32": 1,
+      "16": 2,
       "166": 1
    },
-   "started": "2026-05-05T16:41:10.330Z",
+   "started": "2026-05-19T13:56:09.852Z",
    "trafficStats": null,
    "txFrameStats": {
       "8": 1
@@ -80,7 +80,7 @@
          8,
          true,
          0,
-         "3677c58e",
+         "c499aef1",
          null,
          null,
          false
@@ -89,7 +89,7 @@
          "TO",
          [
             20,
-            "888e3677c58e359f8deb5a1baaae6118b7e25256"
+            "888ec499aef1c771e694a8f5c1d193f6dc9da0b8"
          ],
          false
       ],
@@ -100,8 +100,8 @@
       [
          "RO",
          [
-            32,
-            "880e03e848656c6c6f20576f726c6421880e03e848656c6c6f20576f726c6421"
+            16,
+            "880e03e848656c6c6f20576f726c6421"
          ]
       ],
       [
@@ -115,6 +115,13 @@
          0,
          false,
          null
+      ],
+      [
+         "RO",
+         [
+            16,
+            "880e03e848656c6c6f20576f726c6421"
+         ]
       ],
       [
          "RF",

@@ -8,7 +8,7 @@
    "createWirelog": true,
    "description": "Send small text message with <b>RSV = 1</b>.",
    "droppedByMe": false,
-   "duration": 0,
+   "duration": 1,
    "expectation": "The connection is failed immediately (1002/protocol error), since RSV must be 0, when no extension defining RSV meaning has been negotiated.",
    "expected": {
       "OK": []
@@ -21,8 +21,8 @@
       "requireClean": false
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: ouNdyvKjDNo6BU+jOdj2JA==\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: 7qPpAMH+IbTJd/lBxQ8gFciDuv8=\r\ndate: Tue, 05 May 2026 16:41:01 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: 4Nn6c1KHajDxAC8ACCqBYg==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: ftLMnJXQYyYmj7TIrZAt6XQfjLk=\r\ndate: Tue, 19 May 2026 13:56:00 GMT\r\n\r\n",
    "id": "3.1",
    "isServer": false,
    "localCloseCode": 1000,
@@ -41,7 +41,7 @@
       "25": 1,
       "166": 1
    },
-   "started": "2026-05-05T16:41:01.414Z",
+   "started": "2026-05-19T13:56:00.746Z",
    "trafficStats": null,
    "txFrameStats": {
       "1": 1,
@@ -82,7 +82,7 @@
          1,
          true,
          1,
-         "3c54d97b",
+         "591338f8",
          null,
          null,
          false
@@ -91,7 +91,7 @@
          "TO",
          [
             19,
-            "918d3c54d97b7431b5175378f90c5326b51f1d"
+            "918d591338f811765494363f188f3661549c78"
          ],
          false
       ],
@@ -127,7 +127,7 @@
          8,
          true,
          0,
-         "fd002ffa",
+         "27f30f97",
          null,
          null,
          false
@@ -136,7 +136,7 @@
          "TO",
          [
             8,
-            "8882fd002ffafee8"
+            "888227f30f97241b"
          ],
          false
       ]

@@ -8,7 +8,7 @@
    "createWirelog": false,
    "description": "Send 1000 compressed messages each of payload size 1024, auto-fragment to 0 octets. Use permessage-deflate client offers (requestNoContextTakeover, requestMaxWindowBits): [(False, 15)]",
    "droppedByMe": false,
-   "duration": 1,
+   "duration": 0,
    "expectation": "Receive echo'ed messages (with payload as sent). Timeout case after 240 secs.",
    "expected": {},
    "expectedClose": {
@@ -19,8 +19,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: iM1nKiIO5Tq6os3nOe0IPw==\r\nSec-WebSocket-Extensions: permessage-deflate; client_no_context_takeover; client_max_window_bits; server_max_window_bits=15\r\nSec-WebSocket-Version: 13\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: wpJsXGyWkEDoj4brqyy55jZ8jgo=\r\ndate: Tue, 05 May 2026 16:41:15 GMT\r\n\r\n",
+   "httpRequest": "GET /ws HTTP/1.1\r\nUser-Agent: AutobahnTestSuite/25.10.1-0.10.9\r\nHost: host.docker.internal:9001\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nSec-WebSocket-Key: LLZoV5Vk5j8HnKlN2Maq2A==\r\nSec-WebSocket-Extensions: permessage-deflate; client_no_context_takeover; client_max_window_bits; server_max_window_bits=15\r\nSec-WebSocket-Version: 13\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nconnection: upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: so9jTQX52C45W2mqFqK/pjrVoQw=\r\ndate: Tue, 19 May 2026 13:56:14 GMT\r\n\r\n",
    "id": "13.4.4",
    "isServer": false,
    "localCloseCode": 1000,
@@ -39,7 +39,7 @@
       "8": 1,
       "166": 1
    },
-   "started": "2026-05-05T16:41:16.243Z",
+   "started": "2026-05-19T13:56:15.386Z",
    "trafficStats": null,
    "txFrameStats": {
       "8": 1

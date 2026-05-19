@@ -31,7 +31,7 @@ http-body-util = "^0.1"
 fastwebsockets = { version = "0.10.0", features = ["upgrade"] }
 
 # logging
-tracing = "0.1.43"
+tracing = { version = "0.1.43", features = ["log"] }
 
 # Other utilities
 derive_more = { version = "^1.0.0", features = ["full"] }
