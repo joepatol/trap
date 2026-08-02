@@ -4,6 +4,9 @@ note.db
 .ruff_cache
 libaras.*
 
+# AI
+.claude/settings.local.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 .pytest_cache/

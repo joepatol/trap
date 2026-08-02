@@ -8,4 +8,4 @@ This project consists of 3 packages.
 
 The Protocol server can be used from Rust by implementing an application that implements the `ASGIAplication` trait from `asgispec`.
 
-Using the protocol server from Python is done by installing the `aras_py` package and serving a Python ASGI callabe, such as FastAPI.
+Using the protocol server from Python is done by installing the `aras_py` package and serving a Python ASGI callable, such as FastAPI.
