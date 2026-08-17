@@ -1,4 +1,5 @@
 /target
+.autobahn_reports
 __test__.py
 note.db
 .ruff_cache
